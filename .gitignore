@@ -1,0 +1,57 @@
+# Android local configuration and secret-bearing configuration
+local.properties
+secrets.properties
+secret.properties
+*.secrets.properties
+*.secret.properties
+*.env
+.env
+.env.*
+!.env.example
+google-services.json
+credentials*.json
+api-keys.properties
+gemini.properties
+voicebox.properties
+
+# Gradle and build output
+.gradle/
+build/
+**/build/
+captures/
+.kotlin/
+
+# Android Studio / IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+.externalNativeBuild/
+.cxx/
+
+# Signing material
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+
+# Recordings, voice samples, and generated audio
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.ogg
+*.opus
+*.flac
+*.3gp
+*.pcm
+recordings/
+voice-samples/
+generated-audio/
+
+# OS files
+.DS_Store
+Thumbs.db
