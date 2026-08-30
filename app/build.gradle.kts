@@ -87,6 +87,9 @@ android {
             "AndroidGradlePluginVersion",
             "GradleDependency",
             "NewerVersionAvailable",
+            // The CI image can contain preview/newer SDKs. targetSdk upgrades require
+            // an explicit compatibility review and must not happen implicitly in CI.
+            "OldTargetApi",
         )
     }
 }
