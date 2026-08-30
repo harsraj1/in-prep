@@ -83,6 +83,13 @@ sealed interface RecoveryPoint {
         val voiceProfile: VoiceProfileReference,
     ) : RecoveryPoint
 
+    data class AnswerReady(
+        val context: InterviewContext,
+        val voiceProfile: VoiceProfileReference,
+        val question: InterviewQuestion,
+        val answer: GeneratedAnswer,
+    ) : RecoveryPoint
+
     data class ReadyToPlay(val content: PlaybackContent) : RecoveryPoint
 }
 

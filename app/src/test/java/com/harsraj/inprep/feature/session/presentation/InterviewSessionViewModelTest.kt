@@ -3,8 +3,14 @@ package com.harsraj.inprep.feature.session.presentation
 import com.harsraj.inprep.di.FakeApplicationContainer
 import com.harsraj.inprep.feature.session.data.fake.FakeSettingsRepository
 import com.harsraj.inprep.feature.session.data.fake.FakePlaybackState
+import com.harsraj.inprep.feature.session.domain.AnswerGenerationRepository
+import com.harsraj.inprep.feature.session.domain.model.GeneratedAnswer
 import com.harsraj.inprep.feature.session.domain.model.InterviewContext
+import com.harsraj.inprep.feature.session.domain.model.InterviewQuestion
 import com.harsraj.inprep.feature.session.domain.model.SessionPreferences
+import com.harsraj.inprep.feature.session.domain.model.VoiceProfileId
+import com.harsraj.inprep.feature.session.domain.model.VoiceProfileReference
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
@@ -12,6 +18,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -170,7 +177,10 @@ class InterviewSessionViewModelTest {
 
         val error = viewModel.state.value as InterviewSessionUiState.RecoverableError
         assertEquals(FailedStage.START_RECORDING, error.failedStage)
-        assertEquals("Microphone unavailable", error.message)
+        assertEquals(
+            "The microphone could not start. Check permission and try again.",
+            error.message,
+        )
     }
 
     @Test
@@ -225,6 +235,35 @@ class InterviewSessionViewModelTest {
     }
 
     @Test
+    fun `reused profile completes a question without cloning again`() = runTest {
+        val preferences = SessionPreferences(
+            context,
+            VoiceProfileReference(
+                VoiceProfileId("saved-profile"),
+                10,
+            ),
+        )
+        val container = FakeApplicationContainer(
+            settingsRepository = FakeSettingsRepository(preferences),
+        )
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+
+        viewModel.dispatch(InterviewSessionAction.StartListening)
+        viewModel.dispatch(InterviewSessionAction.FinishListening)
+        advanceUntilIdle()
+        val transcript = (viewModel.state.value as InterviewSessionUiState.QuestionReady).transcript
+        viewModel.dispatch(InterviewSessionAction.GenerateFromTranscript(transcript))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value is InterviewSessionUiState.ReadyToPlay)
+        assertTrue(container.fakeVoiceCloningRepository.samples.isEmpty())
+        assertEquals(
+            preferences.voiceProfile,
+            container.fakeAudioSynthesisRepository.requests.single().second,
+        )
+    }
+
+    @Test
     fun `cancel releases recording and listening and returns to stable states`() = runTest {
         val container = FakeApplicationContainer()
         val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
@@ -266,7 +305,103 @@ class InterviewSessionViewModelTest {
     }
 
     @Test
-    fun `stop from playback releases player and generated audio`() = runTest {
+    fun `microphone start denial can be retried without trapping setup`() = runTest {
+        val container = FakeApplicationContainer().apply {
+            fakeVoiceSampleRecorder.nextStartFailure = SecurityException("permission denied")
+        }
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.StartRecording(context)))
+        val error = viewModel.state.value as InterviewSessionUiState.RecoverableError
+        assertEquals(FailedStage.START_RECORDING, error.failedStage)
+        assertFalse(error.message.contains("permission denied", ignoreCase = true))
+
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.Retry))
+        assertTrue(viewModel.state.value is InterviewSessionUiState.Recording)
+        assertEquals(1, container.fakeVoiceSampleRecorder.startCount)
+    }
+
+    @Test
+    fun `gemini retry reuses reviewed question and does not listen again`() = runTest {
+        val container = FakeApplicationContainer().apply {
+            fakeAnswerGenerationRepository.failuresRemaining = 1
+        }
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+        createReadySession(viewModel)
+        viewModel.dispatch(InterviewSessionAction.StartListening)
+        viewModel.dispatch(InterviewSessionAction.FinishListening)
+        advanceUntilIdle()
+        val question = (viewModel.state.value as InterviewSessionUiState.QuestionReady).transcript
+
+        viewModel.dispatch(InterviewSessionAction.GenerateFromTranscript(question))
+        advanceUntilIdle()
+        assertEquals(
+            FailedStage.GENERATE_ANSWER,
+            (viewModel.state.value as InterviewSessionUiState.RecoverableError).failedStage,
+        )
+        viewModel.dispatch(InterviewSessionAction.Retry)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value is InterviewSessionUiState.ReadyToPlay)
+        assertEquals(2, container.fakeAnswerGenerationRepository.requests.size)
+        assertEquals(1, container.fakeSpeechRecognitionRepository.startCount)
+        assertEquals(1, container.fakeAudioSynthesisRepository.requests.size)
+    }
+
+    @Test
+    fun `voicebox synthesis retry reuses generated answer`() = runTest {
+        val container = FakeApplicationContainer().apply {
+            fakeAudioSynthesisRepository.failuresRemaining = 1
+        }
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+        createReadyToPlaySession(viewModel, expectReady = false)
+
+        val error = viewModel.state.value as InterviewSessionUiState.RecoverableError
+        assertEquals(FailedStage.SYNTHESIZE_SPEECH, error.failedStage)
+        assertTrue(error.recoveryPoint is RecoveryPoint.AnswerReady)
+        viewModel.dispatch(InterviewSessionAction.Retry)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value is InterviewSessionUiState.ReadyToPlay)
+        assertEquals(1, container.fakeAnswerGenerationRepository.requests.size)
+        assertEquals(2, container.fakeAudioSynthesisRepository.requests.size)
+    }
+
+    @Test
+    fun `close cancels in flight generation without late error or duplicate request`() = runTest {
+        val answer = CompletableDeferred<GeneratedAnswer>()
+        var requestCount = 0
+        val container = FakeApplicationContainer(
+            answerGenerationRepository = object : AnswerGenerationRepository {
+                override suspend fun generateAnswer(
+                    context: InterviewContext,
+                    question: InterviewQuestion,
+                ): GeneratedAnswer {
+                    requestCount += 1
+                    return answer.await()
+                }
+            },
+        )
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+        createReadySession(viewModel)
+        viewModel.dispatch(InterviewSessionAction.StartListening)
+        viewModel.dispatch(InterviewSessionAction.FinishListening)
+        advanceUntilIdle()
+        val question = (viewModel.state.value as InterviewSessionUiState.QuestionReady).transcript
+        viewModel.dispatch(InterviewSessionAction.GenerateFromTranscript(question))
+        runCurrent()
+        assertTrue(viewModel.state.value is InterviewSessionUiState.GeneratingAnswer)
+
+        viewModel.dispatch(InterviewSessionAction.Close)
+        advanceUntilIdle()
+
+        assertEquals(InterviewSessionUiState.Setup(context), viewModel.state.value)
+        assertEquals(1, requestCount)
+        assertTrue(container.fakeAudioSynthesisRepository.requests.isEmpty())
+    }
+
+    @Test
+    fun `stop from playback resets player while preserving prepared answer`() = runTest {
         val container = FakeApplicationContainer()
         val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
         createReadyToPlaySession(viewModel)
@@ -274,12 +409,12 @@ class InterviewSessionViewModelTest {
         advanceUntilIdle()
 
         assertAccepted(viewModel.dispatch(InterviewSessionAction.Stop))
-        assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
+        assertTrue(viewModel.state.value is InterviewSessionUiState.ReadyToPlay)
         advanceUntilIdle()
 
         assertEquals(FakePlaybackState.STOPPED, container.fakeAudioPlaybackRepository.playbackState)
         assertEquals(1, container.fakeAudioPlaybackRepository.stopCount)
-        assertTrue(
+        assertFalse(
             container.fakeAudioSynthesisRepository.audio.temporaryFile in
                 container.fakeTemporaryFileCleaner.deletedFiles,
         )
@@ -312,24 +447,22 @@ class InterviewSessionViewModelTest {
     }
 
     @Test
-    fun `close blocks actions and reset clears persisted and temporary state`() = runTest {
+    fun `close returns to setup retaining saved choices and reset clears them`() = runTest {
         val container = FakeApplicationContainer()
         val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
         createReadySession(viewModel)
 
         assertAccepted(viewModel.dispatch(InterviewSessionAction.Close))
-        assertEquals(InterviewSessionUiState.Closed, viewModel.state.value)
-        assertTrue(
-            viewModel.dispatch(InterviewSessionAction.StartRecording(context)) is
-                ActionDispatchResult.Rejected,
-        )
         advanceUntilIdle()
+        assertEquals(InterviewSessionUiState.Setup(context), viewModel.state.value)
+        val settings = container.settingsRepository as FakeSettingsRepository
+        assertTrue(settings.preferences != null)
+        assertEquals(1, container.fakeTemporaryFileCleaner.deleteAllCount)
 
         assertAccepted(viewModel.dispatch(InterviewSessionAction.Reset))
         advanceUntilIdle()
 
         assertEquals(InterviewSessionUiState.Setup(), viewModel.state.value)
-        val settings = container.settingsRepository as FakeSettingsRepository
         assertEquals(null, settings.preferences)
         assertEquals(1, settings.clearCount)
         assertEquals(2, container.fakeTemporaryFileCleaner.deleteAllCount)
@@ -347,6 +480,7 @@ class InterviewSessionViewModelTest {
 
     private suspend fun kotlinx.coroutines.test.TestScope.createReadyToPlaySession(
         viewModel: InterviewSessionViewModel,
+        expectReady: Boolean = true,
     ) {
         if (viewModel.state.value !is InterviewSessionUiState.Ready) createReadySession(viewModel)
         viewModel.dispatch(InterviewSessionAction.StartListening)
@@ -355,7 +489,7 @@ class InterviewSessionViewModelTest {
         val questionReady = viewModel.state.value as InterviewSessionUiState.QuestionReady
         viewModel.dispatch(InterviewSessionAction.GenerateFromTranscript(questionReady.transcript))
         advanceUntilIdle()
-        assertTrue(viewModel.state.value is InterviewSessionUiState.ReadyToPlay)
+        if (expectReady) assertTrue(viewModel.state.value is InterviewSessionUiState.ReadyToPlay)
     }
 
     private fun assertAccepted(result: ActionDispatchResult) {

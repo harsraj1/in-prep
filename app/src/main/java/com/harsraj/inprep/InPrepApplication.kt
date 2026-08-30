@@ -36,6 +36,9 @@ class InPrepApplication : Application() {
         val generatedAudioStore = PrivateGeneratedAudioStore(this).also {
             it.deleteExpired(System.currentTimeMillis())
         }
+        if (BuildConfig.USE_FAKE_SERVICES) {
+            return@lazy FakeApplicationContainer(settingsRepository = settingsRepository)
+        }
         val voicebox = VoiceboxVoiceServices(
             client = OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)

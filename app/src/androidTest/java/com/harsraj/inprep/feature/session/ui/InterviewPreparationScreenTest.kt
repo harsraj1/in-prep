@@ -174,6 +174,20 @@ class InterviewPreparationScreenTest {
         assertEquals(InterviewSessionAction.Reset, actions.last())
     }
 
+    @Test
+    fun privacyDialogExplainsEveryExternalDataBoundary() {
+        val actions = mutableListOf<InterviewSessionAction>()
+        setScreen(readyState(), actions)
+
+        composeRule.onNodeWithText("Privacy").performClick()
+
+        composeRule.onNodeWithText("Privacy and data sharing").assertIsDisplayed()
+        composeRule.onNodeWithText("Gemini", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Voicebox server operator", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Done").performClick()
+        assertTrue(actions.isEmpty())
+    }
+
     private fun setScreen(
         state: InterviewSessionUiState,
         actions: MutableList<InterviewSessionAction>,

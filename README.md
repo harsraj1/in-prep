@@ -28,6 +28,12 @@ Gemini answers, and a verified Voicebox v0.5.0 LAN adapter.
 6. Sync Gradle, then run the `app` configuration on an API 26+ emulator or
    device.
 
+For a deterministic demonstration with no microphone, Gemini, Voicebox, or
+network calls, add `INPREP_USE_FAKE_SERVICES=true` to ignored
+`local.properties` and rebuild the debug app. Remove it or set it to `false` to
+exercise the real development configuration. Release builds always disable
+fake mode.
+
 Do not put real credentials in tracked Gradle files, source files, resources,
 tests, logs, or example configuration. **A Gemini key placed in `BuildConfig` is
 embedded in the debug APK and can be extracted.** This is a local-development
@@ -117,8 +123,9 @@ device, manually verify:
 Voicebox synthesis completes and streams a bounded WAV into
 `cacheDir/generated-audio` before **Start** becomes available. Playback uses stable
 Media3 ExoPlayer 1.11.0 rather than the platform `MediaPlayer`. Pause preserves the
-position, Resume continues it, and Stop/completion resets the player and removes
-the private temporary audio.
+position and Resume continues it. Stop resets playback while retaining the prepared
+answer and audio so it can be started again; completion, Close, reset, and cache
+expiry remove private temporary audio.
 
 ExoPlayer manages audio focus with speech audio attributes. Speech is paused rather
 than ducked when focus policy requires it, and headphone/Bluetooth route loss pauses
@@ -169,6 +176,13 @@ Never commit real voice/audio data. Future implementations must obtain clear
 user consent, minimize retention, use app-private storage, delete temporary
 files promptly, secure all network transport, and document any server-side
 retention or sharing.
+
+The in-app **Privacy** dialog summarizes the active trust boundaries: the voice
+sample and generated answer go to the configured Voicebox operator; company,
+role, and recognized question go to Gemini; and the installed Android speech
+recognition provider may process spoken questions. Close cancels active work,
+deletes temporary session media, and returns to setup while retaining deliberately
+saved target/profile preferences. Reset additionally clears those preferences.
 
 See [the architecture notes](docs/architecture.md) and the
 [verified Voicebox contract](docs/voicebox-api.md). The current Gemini model,

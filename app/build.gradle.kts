@@ -21,6 +21,10 @@ val localVoiceboxBaseUrl = providers.gradleProperty("VOICEBOX_BASE_URL")
 val escapedVoiceboxBaseUrl = localVoiceboxBaseUrl.get()
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
+val useFakeServices = providers.gradleProperty("INPREP_USE_FAKE_SERVICES")
+    .orElse(providers.provider { localProperties.getProperty("INPREP_USE_FAKE_SERVICES", "false") })
+    .map { it.toBooleanStrictOrNull() ?: false }
+    .getOrElse(false)
 
 android {
     namespace = "com.harsraj.inprep"
@@ -42,10 +46,12 @@ android {
             // Production Gemini traffic must use a secret-preserving backend proxy.
             buildConfigField("String", "GEMINI_API_KEY", "\"$escapedGeminiApiKey\"")
             buildConfigField("String", "VOICEBOX_BASE_URL", "\"$escapedVoiceboxBaseUrl\"")
+            buildConfigField("boolean", "USE_FAKE_SERVICES", useFakeServices.toString())
         }
         release {
             buildConfigField("String", "GEMINI_API_KEY", "\"\"")
             buildConfigField("String", "VOICEBOX_BASE_URL", "\"\"")
+            buildConfigField("boolean", "USE_FAKE_SERVICES", "false")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

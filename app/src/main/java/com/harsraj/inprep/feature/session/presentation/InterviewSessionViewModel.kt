@@ -21,6 +21,7 @@ import com.harsraj.inprep.feature.session.domain.model.SessionPreferences
 import com.harsraj.inprep.feature.session.domain.model.VoiceProfileReference
 import com.harsraj.inprep.feature.session.domain.model.VoiceSampleMetadata
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -211,7 +212,7 @@ class InterviewSessionViewModel(
             InterviewSessionAction.Cancel -> cancel(current)
             InterviewSessionAction.Retry -> retry()
             InterviewSessionAction.Stop -> stop(current)
-            InterviewSessionAction.Close -> close()
+            InterviewSessionAction.Close -> close(current)
             InterviewSessionAction.Reset -> reset()
         }
         return ActionDispatchResult.Accepted
@@ -223,6 +224,8 @@ class InterviewSessionViewModel(
             launchOperation { settingsRepository.saveInterviewContext(context) }
             retryOperation = null
             mutableState.value = InterviewSessionUiState.Recording(context)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             retryOperation = RetryOperation.StartRecording(context)
             showError(
@@ -238,6 +241,8 @@ class InterviewSessionViewModel(
             val sample = voiceSampleRecorder.finish()
             retryOperation = null
             mutableState.value = InterviewSessionUiState.VoiceSampleReady(recording.context, sample)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             retryOperation = RetryOperation.StartRecording(recording.context)
             showError(
@@ -272,6 +277,8 @@ class InterviewSessionViewModel(
                 temporaryFileCleaner.delete(sample.temporaryFile)
                 retryOperation = null
                 mutableState.value = InterviewSessionUiState.Ready(context, profile)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 showError(
                     recoveryPoint = RecoveryPoint.Setup(context),
@@ -287,6 +294,8 @@ class InterviewSessionViewModel(
         try {
             speechRecognitionRepository.startListening()
             retryOperation = RetryOperation.StartListening(context, profile)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             showError(
                 recoveryPoint = RecoveryPoint.Ready(context, profile),
@@ -308,6 +317,8 @@ class InterviewSessionViewModel(
                 val question = speechRecognitionRepository.stopAndTranscribe()
                 yield()
                 acceptTranscript(context, profile, question.text)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 showError(
                     recoveryPoint = RecoveryPoint.Ready(context, profile),
@@ -364,6 +375,8 @@ class InterviewSessionViewModel(
             val answer = answerGenerationRepository.generateAnswer(context, question)
             yield()
             synthesizeSpeech(context, profile, question, answer)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             showError(
                 recoveryPoint = RecoveryPoint.Ready(context, profile),
@@ -392,9 +405,11 @@ class InterviewSessionViewModel(
             mutableState.value = InterviewSessionUiState.ReadyToPlay(
                 PlaybackContent(context, profile, question, answer, audio),
             )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (error: Exception) {
             showError(
-                recoveryPoint = RecoveryPoint.Ready(context, profile),
+                recoveryPoint = RecoveryPoint.AnswerReady(context, profile, question, answer),
                 failedStage = FailedStage.SYNTHESIZE_SPEECH,
                 error = error,
             )
@@ -408,6 +423,8 @@ class InterviewSessionViewModel(
             try {
                 audioPlaybackRepository.play(content.audio)
                 retryOperation = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 showError(
                     recoveryPoint = RecoveryPoint.ReadyToPlay(content),
@@ -423,6 +440,8 @@ class InterviewSessionViewModel(
         launchOperation {
             try {
                 audioPlaybackRepository.pause()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 showError(
                     recoveryPoint = RecoveryPoint.ReadyToPlay(content),
@@ -440,6 +459,8 @@ class InterviewSessionViewModel(
             try {
                 audioPlaybackRepository.resume()
                 retryOperation = null
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 showError(
                     recoveryPoint = RecoveryPoint.ReadyToPlay(content),
@@ -523,7 +544,12 @@ class InterviewSessionViewModel(
         operationJob?.cancel()
         operationJob = null
         retryOperation = null
-        val ready = current.readyStateOrNull()
+        val stableState = when (current) {
+            is InterviewSessionUiState.ReadyToPlay -> current
+            is InterviewSessionUiState.Playing -> InterviewSessionUiState.ReadyToPlay(current.content)
+            is InterviewSessionUiState.Paused -> InterviewSessionUiState.ReadyToPlay(current.content)
+            else -> current.readyStateOrNull()
+        }
         when (current) {
             is InterviewSessionUiState.Recording -> voiceSampleRecorder.cancel()
             is InterviewSessionUiState.Listening,
@@ -531,7 +557,7 @@ class InterviewSessionViewModel(
             -> speechRecognitionRepository.cancel()
             else -> Unit
         }
-        mutableState.value = ready ?: when (current) {
+        mutableState.value = stableState ?: when (current) {
             is InterviewSessionUiState.Recording -> InterviewSessionUiState.Setup(current.context)
             is InterviewSessionUiState.VoiceSampleReady -> InterviewSessionUiState.Setup(current.context)
             is InterviewSessionUiState.Cloning -> InterviewSessionUiState.Setup(current.context)
@@ -539,14 +565,10 @@ class InterviewSessionViewModel(
             else -> InterviewSessionUiState.Setup()
         }
         launchOperation {
-            if (current is InterviewSessionUiState.ReadyToPlay) {
-                temporaryFileCleaner.delete(current.content.audio.temporaryFile)
-            } else if (current is InterviewSessionUiState.Playing) {
+            if (current is InterviewSessionUiState.Playing) {
                 audioPlaybackRepository.stop()
-                temporaryFileCleaner.delete(current.content.audio.temporaryFile)
             } else if (current is InterviewSessionUiState.Paused) {
                 audioPlaybackRepository.stop()
-                temporaryFileCleaner.delete(current.content.audio.temporaryFile)
             } else if (current is InterviewSessionUiState.Cloning) {
                 temporaryFileCleaner.delete(current.sample.temporaryFile)
             } else if (current is InterviewSessionUiState.VoiceSampleReady) {
@@ -555,13 +577,13 @@ class InterviewSessionViewModel(
         }
     }
 
-    private fun close() {
+    private fun close(current: InterviewSessionUiState) {
         operationJob?.cancel()
         operationJob = null
         retryOperation = null
         voiceSampleRecorder.cancel()
         speechRecognitionRepository.cancel()
-        mutableState.value = InterviewSessionUiState.Closed
+        mutableState.value = InterviewSessionUiState.Setup(current.contextOrNull())
         launchOperation {
             runCatching { audioPlaybackRepository.stop() }
             temporaryFileCleaner.deleteAll()
@@ -595,8 +617,30 @@ class InterviewSessionViewModel(
         mutableState.value = InterviewSessionUiState.RecoverableError(
             recoveryPoint = recoveryPoint,
             failedStage = failedStage,
-            message = error.message ?: "The operation could not be completed",
+            message = userSafeErrorMessage(failedStage, error),
         )
+    }
+
+    private fun userSafeErrorMessage(failedStage: FailedStage, error: Exception): String {
+        if (error is IllegalArgumentException && failedStage == FailedStage.TRANSCRIBE) {
+            return "Enter a clear interview question before generating an answer."
+        }
+        return when (failedStage) {
+            FailedStage.START_RECORDING ->
+                "The microphone could not start. Check permission and try again."
+            FailedStage.CLONE_VOICE ->
+                "The voice profile could not be created. Check the trusted-LAN Voicebox connection and retry."
+            FailedStage.START_LISTENING ->
+                "Speech recognition could not start. Check microphone access and recognizer availability."
+            FailedStage.TRANSCRIBE ->
+                "No usable question was captured. Check the connection or try speaking again."
+            FailedStage.GENERATE_ANSWER ->
+                "The answer service is unavailable or blocked this request. Check connectivity and retry."
+            FailedStage.SYNTHESIZE_SPEECH ->
+                "Voicebox could not prepare the audio. Check the trusted-LAN server and retry."
+            FailedStage.PLAYBACK ->
+                "The prepared audio could not be played. Retry or generate the answer again."
+        }
     }
 
     private fun launchOperation(block: suspend () -> Unit) {
@@ -626,8 +670,7 @@ class InterviewSessionViewModel(
         is InterviewSessionUiState.QuestionReady -> action is InterviewSessionAction.GenerateFromTranscript ||
             action == InterviewSessionAction.StartListening || action.isTerminationAction()
         is InterviewSessionUiState.ReadyToPlay -> action == InterviewSessionAction.Play ||
-            action == InterviewSessionAction.Stop || action == InterviewSessionAction.Close ||
-            action == InterviewSessionAction.Reset
+            action == InterviewSessionAction.Close || action == InterviewSessionAction.Reset
         is InterviewSessionUiState.Playing -> action == InterviewSessionAction.Pause ||
             action == InterviewSessionAction.PlaybackCompleted ||
             action == InterviewSessionAction.Stop || action == InterviewSessionAction.Close ||
@@ -667,9 +710,33 @@ class InterviewSessionViewModel(
         else -> null
     }
 
+    private fun InterviewSessionUiState.contextOrNull(): InterviewContext? = when (this) {
+        is InterviewSessionUiState.Setup -> savedContext
+        is InterviewSessionUiState.Recording -> context
+        is InterviewSessionUiState.VoiceSampleReady -> context
+        is InterviewSessionUiState.Cloning -> context
+        is InterviewSessionUiState.Ready -> context
+        is InterviewSessionUiState.Listening -> context
+        is InterviewSessionUiState.Transcribing -> context
+        is InterviewSessionUiState.QuestionReady -> context
+        is InterviewSessionUiState.GeneratingAnswer -> context
+        is InterviewSessionUiState.SynthesizingSpeech -> context
+        is InterviewSessionUiState.ReadyToPlay -> content.context
+        is InterviewSessionUiState.Playing -> content.context
+        is InterviewSessionUiState.Paused -> content.context
+        is InterviewSessionUiState.RecoverableError -> when (val point = recoveryPoint) {
+            is RecoveryPoint.Setup -> point.context
+            is RecoveryPoint.Ready -> point.context
+            is RecoveryPoint.AnswerReady -> point.context
+            is RecoveryPoint.ReadyToPlay -> point.content.context
+        }
+        InterviewSessionUiState.Closed -> null
+    }
+
     private fun RecoveryPoint.toState(): InterviewSessionUiState = when (this) {
         is RecoveryPoint.Setup -> InterviewSessionUiState.Setup(context)
         is RecoveryPoint.Ready -> InterviewSessionUiState.Ready(context, voiceProfile)
+        is RecoveryPoint.AnswerReady -> InterviewSessionUiState.Ready(context, voiceProfile)
         is RecoveryPoint.ReadyToPlay -> InterviewSessionUiState.ReadyToPlay(content)
     }
 

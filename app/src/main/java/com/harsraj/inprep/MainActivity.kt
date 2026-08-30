@@ -71,8 +71,28 @@ class MainActivity : ComponentActivity() {
                     uiState = state,
                     reusablePreferences = settings.reusableSessionPreferences,
                     onAction = sessionViewModel::dispatch,
-                    onStartRecording = permissionGate.requestRecording,
-                    onStartListening = permissionGate.requestListening,
+                    onStartRecording = if (BuildConfig.USE_FAKE_SERVICES) {
+                        { context ->
+                            sessionViewModel.dispatch(
+                                com.harsraj.inprep.feature.session.presentation.InterviewSessionAction
+                                    .StartRecording(context),
+                            )
+                            Unit
+                        }
+                    } else {
+                        permissionGate.requestRecording
+                    },
+                    onStartListening = if (BuildConfig.USE_FAKE_SERVICES) {
+                        {
+                            sessionViewModel.dispatch(
+                                com.harsraj.inprep.feature.session.presentation.InterviewSessionAction
+                                    .StartListening,
+                            )
+                            Unit
+                        }
+                    } else {
+                        permissionGate.requestListening
+                    },
                 )
             }
         }

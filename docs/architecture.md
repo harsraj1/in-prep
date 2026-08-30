@@ -332,9 +332,10 @@ pauses for focus changes rather than lowering intelligibility through ducking, a
 `setHandleAudioBecomingNoisy(true)` pauses on headphone or route disconnect.
 `AudioPlaybackStatus` reports Playing, Paused, Completed, Failed, and Idle back to
 the single session state machine. Completion resets the player, returns to Ready,
-and deletes the WAV; corruption becomes a recoverable playback error. Stop, host
-backgrounding, close, reset, and ViewModel teardown stop/release resources and clean
-temporary audio. Existing state validity provides mutual exclusion with recording,
+and deletes the WAV; corruption becomes a recoverable playback error. Stop resets
+playback but preserves `ReadyToPlay` and its visible answer. Close, reset, completion,
+cache expiry, and ViewModel teardown stop/release resources and clean temporary
+audio. Existing state validity provides mutual exclusion with recording,
 recognition, generation, and synthesis.
 
 JVM tests exercise completion, interruption/error, rapid duplicate actions, stop,
@@ -342,6 +343,31 @@ close, and cleanup. A connected-device test creates a short synthetic silent PCM
 at runtime (no personal voice fixture), verifies play/pause/resume/completion/stop,
 then deletes it. Actual audio focus and route-loss behavior remains a physical-device
 manual check documented in the README.
+
+## Phase 9 end-to-end session boundary
+
+`InterviewSessionViewModel` is the sole orchestrator for the complete loop:
+setup → record/clone or profile reuse → listen/review → Gemini → Voicebox synthesis
+→ playback → next question. UI recomposition only renders `StateFlow`; it never
+starts service work. Immediate state transitions reject rapid duplicate actions,
+and the activity-retained ViewModel prevents rotation from repeating requests.
+
+Each retry retains only the last safe input for its failed boundary. Gemini retry
+reuses the reviewed question without listening again. Synthesis retry reuses the
+generated answer without another Gemini request. Coroutine cancellation is rethrown
+instead of mapped as a late user-visible error, so Close/reset cannot be overwritten
+by a canceled request. Error copy is stage-specific and never exposes exception text.
+
+Close cancels recording, recognition, generation, synthesis, and playback; deletes
+temporary media; clears question/answer state; and returns to setup with intentionally
+saved context/profile preferences intact. Reset performs the same resource cleanup
+and additionally clears persisted preferences. A debug-only, ignored
+`INPREP_USE_FAKE_SERVICES=true` configuration replaces device and network services
+with deterministic fakes; release always forces it off.
+
+The Privacy dialog identifies what leaves the device and the three operators/trust
+boundaries involved: Gemini, the installed Android recognition provider, and the
+configured Voicebox server/operator.
 
 ## Decisions requiring verification
 

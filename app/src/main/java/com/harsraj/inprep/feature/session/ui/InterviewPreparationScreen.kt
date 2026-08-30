@@ -91,6 +91,7 @@ fun InterviewPreparationScreen(
 ) {
     var showCloseConfirmation by rememberSaveable { mutableStateOf(false) }
     var showResetConfirmation by rememberSaveable { mutableStateOf(false) }
+    var showPrivacyInformation by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         BoxWithConstraints(
@@ -110,6 +111,7 @@ fun InterviewPreparationScreen(
                 Header(
                     canClose = uiState !is InterviewSessionUiState.Closed,
                     onClose = { showCloseConfirmation = true },
+                    onPrivacy = { showPrivacyInformation = true },
                 )
                 SessionStatus(uiState)
 
@@ -148,7 +150,7 @@ fun InterviewPreparationScreen(
     if (showCloseConfirmation) {
         ConfirmationDialog(
             title = "Close this session?",
-            message = "Listening, playback, and temporary session audio will stop. Your reusable voice profile is kept.",
+            message = "Listening, playback, and temporary session audio will stop. Saved target and reusable voice profile choices are kept.",
             confirmLabel = "Close session",
             onDismiss = { showCloseConfirmation = false },
             onConfirm = {
@@ -169,10 +171,29 @@ fun InterviewPreparationScreen(
             },
         )
     }
+    if (showPrivacyInformation) {
+        AlertDialog(
+            onDismissRequest = { showPrivacyInformation = false },
+            title = { Text("Privacy and data sharing") },
+            text = {
+                Text(
+                    "Your voice sample and generated answer are sent to the Voicebox server " +
+                        "you configure. Your recognized question, company, and role are sent " +
+                        "to Gemini. Android's speech-recognition provider may also process " +
+                        "spoken questions. The Voicebox server operator can access submitted " +
+                        "voice and text. Temporary audio stays in this app's private cache " +
+                        "and is removed when no longer needed. Do not use an untrusted server.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showPrivacyInformation = false }) { Text("Done") }
+            },
+        )
+    }
 }
 
 @Composable
-private fun Header(canClose: Boolean, onClose: () -> Unit) {
+private fun Header(canClose: Boolean, onClose: () -> Unit, onPrivacy: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -191,9 +212,11 @@ private fun Header(canClose: Boolean, onClose: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (canClose) {
-            Spacer(Modifier.width(12.dp))
-            TextButton(onClick = onClose) { Text("Close") }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = onPrivacy) { Text("Privacy") }
+            if (canClose) {
+                TextButton(onClick = onClose) { Text("Close") }
+            }
         }
     }
 }
@@ -435,7 +458,6 @@ private fun InterviewCard(
             -> StopButton(onAction)
             is InterviewSessionUiState.ReadyToPlay -> {
                 PrimaryAction("Start") { onAction(InterviewSessionAction.Play) }
-                StopButton(onAction)
             }
             is InterviewSessionUiState.Playing -> {
                 PrimaryAction("Pause") { onAction(InterviewSessionAction.Pause) }
@@ -599,6 +621,7 @@ private fun InterviewSessionUiState.interviewContext(): InterviewContext? = when
     is InterviewSessionUiState.RecoverableError -> when (val point = recoveryPoint) {
         is RecoveryPoint.Setup -> point.context
         is RecoveryPoint.Ready -> point.context
+        is RecoveryPoint.AnswerReady -> point.context
         is RecoveryPoint.ReadyToPlay -> point.content.context
     }
     InterviewSessionUiState.Closed -> null
@@ -612,8 +635,11 @@ private fun InterviewSessionUiState.questionText(): String? = when (this) {
     is InterviewSessionUiState.ReadyToPlay -> content.question.text
     is InterviewSessionUiState.Playing -> content.question.text
     is InterviewSessionUiState.Paused -> content.question.text
-    is InterviewSessionUiState.RecoverableError ->
-        (recoveryPoint as? RecoveryPoint.ReadyToPlay)?.content?.question?.text
+    is InterviewSessionUiState.RecoverableError -> when (val point = recoveryPoint) {
+        is RecoveryPoint.AnswerReady -> point.question.text
+        is RecoveryPoint.ReadyToPlay -> point.content.question.text
+        else -> null
+    }
     else -> null
 }
 
@@ -622,8 +648,11 @@ private fun InterviewSessionUiState.answerText(): String? = when (this) {
     is InterviewSessionUiState.ReadyToPlay -> content.answer.text
     is InterviewSessionUiState.Playing -> content.answer.text
     is InterviewSessionUiState.Paused -> content.answer.text
-    is InterviewSessionUiState.RecoverableError ->
-        (recoveryPoint as? RecoveryPoint.ReadyToPlay)?.content?.answer?.text
+    is InterviewSessionUiState.RecoverableError -> when (val point = recoveryPoint) {
+        is RecoveryPoint.AnswerReady -> point.answer.text
+        is RecoveryPoint.ReadyToPlay -> point.content.answer.text
+        else -> null
+    }
     else -> null
 }
 
