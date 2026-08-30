@@ -1,5 +1,7 @@
 # In Prep
 
+[![Android validation](https://github.com/harsraj1/in-prep/actions/workflows/android.yml/badge.svg)](https://github.com/harsraj1/in-prep/actions/workflows/android.yml)
+
 In Prep is an Android interview-preparation app. The current build provides the
 accessible Jetpack Compose experience, persistent non-secret preferences,
 lifecycle-safe local voice-sample capture, Android speech recognition, tailored
@@ -175,6 +177,12 @@ On macOS or Linux:
 Then run `./gradlew connectedDebugAndroidTest` with an emulator or device.
 
 There is no separate formatter task in the Phase 0 baseline.
+
+GitHub Actions runs the same credential-free unit-test, lint, and debug-build
+checks for pull requests and pushes to `main`. CI intentionally receives no
+Gemini key or Voicebox URL; external-service coverage uses local fakes and mock
+servers. Instrumented tests remain a documented device/emulator check because
+the minimal workflow does not provision an emulator.
 
 For a release-candidate check, run from a clean working tree:
 

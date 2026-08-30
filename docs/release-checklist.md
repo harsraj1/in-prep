@@ -13,6 +13,8 @@
 ## Automated verification
 
 - [ ] Run `clean test lint assembleDebug assembleRelease`.
+- [ ] Confirm the GitHub **Android validation** workflow passes on the exact
+  commit proposed for `v0.1.0`. It must run without Gemini or Voicebox secrets.
 - [ ] Run `connectedDebugAndroidTest` on an available emulator/device and record the
   device/API; do not mark it complete without actual output.
 - [ ] Inspect lint HTML/SARIF and both unit/instrumented reports.
@@ -36,3 +38,14 @@
   rotation, backgrounding, audio focus, headphone disconnect, and network loss.
 - [ ] Record known limitations and release approver/date outside the repository if it
   contains personal or deployment-sensitive information.
+
+## MVP checkpoint
+
+- [ ] Review the commits included since the baseline and confirm the intended
+  checkpoint commit is on `main`.
+- [ ] Summarize automated/device tests, privacy limitations, and known issues for
+  the approver.
+- [ ] Create the annotated local tag only after the summary is reviewed:
+  `v0.1.0` with message `Android Interview Preparation App MVP`.
+- [ ] Obtain explicit approval before pushing the tag. Tagging does not authorize
+  creating a GitHub Release or uploading an APK/AAB.
