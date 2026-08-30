@@ -7,6 +7,24 @@ accessible Jetpack Compose experience, persistent non-secret preferences,
 lifecycle-safe local voice-sample capture, Android speech recognition, tailored
 Gemini answers, and a verified Voicebox v0.5.0 LAN adapter.
 
+## App walkthrough
+
+The setup screen collects the interview target and lets the user choose either
+voice-profile preparation or text-only practice.
+
+<p align="center">
+  <img src="docs/screenshots/setup.png" alt="In Prep setup screen with company and target-role fields" width="280" />
+</p>
+
+Text-only mode keeps interview practice available without calling Voicebox. The
+review step lets the user correct speech-recognition results before sending the
+question to Gemini.
+
+<p align="center">
+  <img src="docs/screenshots/text-session.png" alt="Text-only interview session ready to listen" width="280" />
+  <img src="docs/screenshots/transcript-review.png" alt="Recognized interview question ready for review and answer generation" width="280" />
+</p>
+
 ## Prerequisites
 
 - Android Studio Meerkat (2024.3.1) or newer
