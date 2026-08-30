@@ -1,8 +1,9 @@
 # In Prep
 
-In Prep is an Android interview-preparation app. Phase 0 provides a secure,
-buildable Jetpack Compose baseline only; voice capture, speech recognition,
-Gemini, and Voicebox are intentionally not integrated yet.
+In Prep is an Android interview-preparation app. The current build provides the
+complete accessible Jetpack Compose experience and exercises it with in-memory
+fakes; voice capture, speech recognition, Gemini, and Voicebox are intentionally
+not integrated yet.
 
 ## Prerequisites
 
@@ -35,11 +36,19 @@ On Windows:
 .\gradlew.bat test lint assembleDebug
 ```
 
+With an emulator or device connected, run Compose UI tests with:
+
+```powershell
+.\gradlew.bat connectedDebugAndroidTest
+```
+
 On macOS or Linux:
 
 ```bash
 ./gradlew test lint assembleDebug
 ```
+
+Then run `./gradlew connectedDebugAndroidTest` with an emulator or device.
 
 There is no separate formatter task in the Phase 0 baseline.
 

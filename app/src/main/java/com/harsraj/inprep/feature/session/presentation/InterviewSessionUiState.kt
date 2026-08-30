@@ -12,6 +12,11 @@ sealed interface InterviewSessionUiState {
 
     data class Recording(val context: InterviewContext) : InterviewSessionUiState
 
+    data class VoiceSampleReady(
+        val context: InterviewContext,
+        val sample: VoiceSampleMetadata,
+    ) : InterviewSessionUiState
+
     data class Cloning(
         val context: InterviewContext,
         val sample: VoiceSampleMetadata,

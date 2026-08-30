@@ -1,11 +1,18 @@
 package com.harsraj.inprep.feature.session.presentation
 
 import com.harsraj.inprep.feature.session.domain.model.InterviewContext
+import com.harsraj.inprep.feature.session.domain.model.SessionPreferences
 
 sealed interface InterviewSessionAction {
     data class StartRecording(val context: InterviewContext) : InterviewSessionAction
 
     data object FinishRecording : InterviewSessionAction
+
+    data object CloneVoice : InterviewSessionAction
+
+    data object DiscardVoiceSample : InterviewSessionAction
+
+    data class ReuseVoiceProfile(val preferences: SessionPreferences) : InterviewSessionAction
 
     data object StartListening : InterviewSessionAction
 

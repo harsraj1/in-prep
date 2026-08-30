@@ -3,71 +3,37 @@ package com.harsraj.inprep
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
+import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.harsraj.inprep.feature.session.presentation.InterviewSessionViewModel
+import com.harsraj.inprep.feature.session.ui.InterviewPreparationScreen
+import com.harsraj.inprep.ui.theme.InPrepTheme
 
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            InPrepTheme {
-                InPrepPlaceholder()
+    private val sessionViewModel: InterviewSessionViewModel by viewModels {
+        viewModelFactory {
+            initializer {
+                (application as InPrepApplication).container.createInterviewSessionViewModel()
             }
         }
     }
-}
 
-internal data class PlaceholderContent(
-    val title: String = "In Prep",
-    val message: String = "Your AI interview practice workspace is being prepared.",
-)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            val state by sessionViewModel.state.collectAsStateWithLifecycle()
+            val container = (application as InPrepApplication).container
 
-@Composable
-internal fun InPrepPlaceholder(
-    content: PlaceholderContent = PlaceholderContent(),
-) {
-    Scaffold { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            Text(text = content.title, style = MaterialTheme.typography.headlineLarge)
-            Text(
-                text = content.message,
-                modifier = Modifier.padding(top = 12.dp),
-                style = MaterialTheme.typography.bodyLarge,
-            )
+            InPrepTheme {
+                InterviewPreparationScreen(
+                    uiState = state,
+                    reusablePreferences = container.settingsRepository.preferences,
+                    onAction = sessionViewModel::dispatch,
+                )
+            }
         }
-    }
-}
-
-@Composable
-private fun InPrepTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = lightColorScheme(),
-        content = content,
-    )
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun InPrepPlaceholderPreview() {
-    InPrepTheme {
-        InPrepPlaceholder()
     }
 }

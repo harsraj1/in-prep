@@ -61,6 +61,14 @@ class InterviewSessionViewModel(
         when (action) {
             is InterviewSessionAction.StartRecording -> startRecording(action.context)
             InterviewSessionAction.FinishRecording -> finishRecording(current as InterviewSessionUiState.Recording)
+            InterviewSessionAction.CloneVoice -> cloneVoice(
+                (current as InterviewSessionUiState.VoiceSampleReady).context,
+                current.sample,
+            )
+            InterviewSessionAction.DiscardVoiceSample -> discardVoiceSample(
+                current as InterviewSessionUiState.VoiceSampleReady,
+            )
+            is InterviewSessionAction.ReuseVoiceProfile -> reuseVoiceProfile(action.preferences)
             InterviewSessionAction.StartListening -> startListening(current as InterviewSessionUiState.Ready)
             InterviewSessionAction.FinishListening -> finishListening(current as InterviewSessionUiState.Listening)
             InterviewSessionAction.Play -> play((current as InterviewSessionUiState.ReadyToPlay).content)
@@ -96,7 +104,8 @@ class InterviewSessionViewModel(
     private fun finishRecording(recording: InterviewSessionUiState.Recording) {
         try {
             val sample = voiceSampleRecorder.finish()
-            cloneVoice(recording.context, sample)
+            retryOperation = null
+            mutableState.value = InterviewSessionUiState.VoiceSampleReady(recording.context, sample)
         } catch (error: Exception) {
             retryOperation = RetryOperation.StartRecording(recording.context)
             showError(
@@ -105,6 +114,20 @@ class InterviewSessionViewModel(
                 error = error,
             )
         }
+    }
+
+    private fun discardVoiceSample(sampleReady: InterviewSessionUiState.VoiceSampleReady) {
+        retryOperation = null
+        mutableState.value = InterviewSessionUiState.Setup(sampleReady.context)
+        launchOperation { temporaryFileCleaner.delete(sampleReady.sample.temporaryFile) }
+    }
+
+    private fun reuseVoiceProfile(preferences: SessionPreferences) {
+        retryOperation = null
+        mutableState.value = InterviewSessionUiState.Ready(
+            preferences.context,
+            preferences.voiceProfile,
+        )
     }
 
     private fun cloneVoice(context: InterviewContext, sample: VoiceSampleMetadata) {
@@ -284,6 +307,7 @@ class InterviewSessionViewModel(
                 mutableState.value = InterviewSessionUiState.Setup(current.context)
                 launchOperation { temporaryFileCleaner.delete(current.sample.temporaryFile) }
             }
+            is InterviewSessionUiState.VoiceSampleReady -> discardVoiceSample(current)
             is InterviewSessionUiState.Transcribing -> {
                 speechRecognitionRepository.cancel()
                 mutableState.value = InterviewSessionUiState.Ready(current.context, current.voiceProfile)
@@ -337,6 +361,7 @@ class InterviewSessionViewModel(
         }
         mutableState.value = ready ?: when (current) {
             is InterviewSessionUiState.Recording -> InterviewSessionUiState.Setup(current.context)
+            is InterviewSessionUiState.VoiceSampleReady -> InterviewSessionUiState.Setup(current.context)
             is InterviewSessionUiState.Cloning -> InterviewSessionUiState.Setup(current.context)
             is InterviewSessionUiState.RecoverableError -> current.recoveryPoint.toState()
             else -> InterviewSessionUiState.Setup()
@@ -351,6 +376,8 @@ class InterviewSessionViewModel(
                 audioPlaybackRepository.stop()
                 temporaryFileCleaner.delete(current.content.audio.temporaryFile)
             } else if (current is InterviewSessionUiState.Cloning) {
+                temporaryFileCleaner.delete(current.sample.temporaryFile)
+            } else if (current is InterviewSessionUiState.VoiceSampleReady) {
                 temporaryFileCleaner.delete(current.sample.temporaryFile)
             }
         }
@@ -409,9 +436,12 @@ class InterviewSessionViewModel(
         current: InterviewSessionUiState,
     ): Boolean = when (current) {
         is InterviewSessionUiState.Setup -> action is InterviewSessionAction.StartRecording ||
+            action is InterviewSessionAction.ReuseVoiceProfile ||
             action == InterviewSessionAction.Close || action == InterviewSessionAction.Reset
         is InterviewSessionUiState.Recording -> action == InterviewSessionAction.FinishRecording ||
             action.isTerminationAction()
+        is InterviewSessionUiState.VoiceSampleReady -> action == InterviewSessionAction.CloneVoice ||
+            action == InterviewSessionAction.DiscardVoiceSample || action.isTerminationAction()
         is InterviewSessionUiState.Cloning -> action.isTerminationAction()
         is InterviewSessionUiState.Ready -> action == InterviewSessionAction.StartListening ||
             action == InterviewSessionAction.Close || action == InterviewSessionAction.Reset

@@ -7,8 +7,8 @@
 - Kotlin with Gradle Kotlin DSL, Jetpack Compose, and Material 3.
 - Minimum SDK 26; compile and target SDK 36.
 - The manifest currently declares no permissions.
-- The application UI still renders a static placeholder. Phase 1 adds only
-  contracts, an explicit session state machine, and in-memory fakes; it has no
+- The application renders the complete Phase 2 setup/interview experience and
+  drives it exclusively through Phase 1 in-memory fakes. It still has no real
   network, microphone, speech-recognition, AI, or audio-generation behavior.
 
 ## Intended layers
@@ -44,6 +44,8 @@ com.harsraj.inprep
     │   └── SessionContracts.kt           replaceable repository interfaces
     ├── data/fake/
     │   └── FakeSessionServices.kt        deterministic in-memory adapters
+    ├── ui/
+    │   └── InterviewPreparationScreen.kt accessible state-driven Compose UI
     └── presentation/
         ├── InterviewSessionAction.kt     accepted user intents and rejections
         ├── InterviewSessionUiState.kt    exhaustive UI state hierarchy
@@ -55,6 +57,35 @@ model-ID, or media-format assumptions. `TemporaryFileReference` is an opaque
 app-owned identifier; a later Android data adapter will map it to a file in the
 app-private cache. The Activity and Composables do not call repositories.
 
+## Compose UI
+
+`InterviewPreparationScreen` is a pure renderer: it receives one UI state and
+dispatches typed actions. `MainActivity` owns no repository logic; it collects
+the ViewModel `StateFlow` with lifecycle awareness and supplies the process-wide
+fake application container.
+
+- Setup fields start empty, preserve local editing state with `rememberSaveable`,
+  support IME Next/Done actions, and show actionable validation errors.
+- All action buttons are rendered only in states where the state machine accepts
+  that action. Recording stop, sample discard, cloning, listening completion,
+  playback, pause/resume, stop, retry, close, and reset remain distinct intents.
+- The layout is vertically scrollable and switches from stacked cards to a
+  two-column arrangement at 720 dp, while `imePadding` keeps keyboard content
+  reachable on compact screens.
+- Material components provide semantic button roles and minimum touch targets.
+  Section titles are headings; changing session status uses a polite live
+  region; recoverable errors use an assertive live region; progress indicators
+  have a spoken description.
+- Light and dark color schemes use paired Material container/on-container colors
+  for readable contrast. Close and full reset each require confirmation.
+- Preview-only values are visibly synthetic and never become production defaults.
+
+Compose instrumentation tests cover setup validation, state-valid controls,
+Pause/Resume labels, live error status and Retry, and confirmed Close/Reset.
+State-machine JVM tests separately verify the full fake journey and resource
+cleanup. No test includes a recording, generated audio binary, credential, or
+production URL.
+
 ## Session state machine
 
 `InterviewSessionViewModel` exposes one `StateFlow<InterviewSessionUiState>`.
@@ -62,7 +93,10 @@ Every action is synchronously accepted or rejected, so duplicate/invalid user
 events cannot silently repeat side effects.
 
 ```text
-Setup --StartRecording--> Recording --FinishRecording--> Cloning --> Ready
+Setup --StartRecording--> Recording --FinishRecording--> VoiceSampleReady
+VoiceSampleReady --CloneVoice--> Cloning --> Ready
+VoiceSampleReady --DiscardVoiceSample--> Setup
+Setup --ReuseVoiceProfile--> Ready
 Ready --StartListening--> Listening --FinishListening--> Transcribing
 Transcribing --> GeneratingAnswer --> SynthesizingSpeech --> ReadyToPlay
 ReadyToPlay --Play--> Playing --Pause--> Paused --Resume--> Playing
@@ -79,8 +113,9 @@ Valid actions by state:
 
 | State | Valid user actions |
 | --- | --- |
-| Setup | StartRecording, Close, Reset |
+| Setup | StartRecording, ReuseVoiceProfile, Close, Reset |
 | Recording | FinishRecording, Cancel, Stop, Close, Reset |
+| VoiceSampleReady | CloneVoice, DiscardVoiceSample, Cancel, Stop, Close, Reset |
 | Cloning | Cancel, Stop, Close, Reset |
 | Ready | StartListening, Close, Reset |
 | Listening | FinishListening, Cancel, Stop, Close, Reset |

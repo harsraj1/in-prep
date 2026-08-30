@@ -3,6 +3,7 @@ package com.harsraj.inprep.feature.session.presentation
 import com.harsraj.inprep.di.FakeApplicationContainer
 import com.harsraj.inprep.feature.session.data.fake.FakePlaybackState
 import com.harsraj.inprep.feature.session.domain.model.InterviewContext
+import com.harsraj.inprep.feature.session.domain.model.SessionPreferences
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.launch
@@ -34,6 +35,8 @@ class InterviewSessionViewModelTest {
         assertTrue(viewModel.state.value is InterviewSessionUiState.Recording)
 
         assertAccepted(viewModel.dispatch(InterviewSessionAction.FinishRecording))
+        assertTrue(viewModel.state.value is InterviewSessionUiState.VoiceSampleReady)
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.CloneVoice))
         assertTrue(viewModel.state.value is InterviewSessionUiState.Cloning)
         advanceUntilIdle()
         assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
@@ -70,6 +73,7 @@ class InterviewSessionViewModelTest {
         val stateTypes = observedStates.map { it::class }
         assertTrue(InterviewSessionUiState.Setup::class in stateTypes)
         assertTrue(InterviewSessionUiState.Recording::class in stateTypes)
+        assertTrue(InterviewSessionUiState.VoiceSampleReady::class in stateTypes)
         assertTrue(InterviewSessionUiState.Cloning::class in stateTypes)
         assertTrue(InterviewSessionUiState.Ready::class in stateTypes)
         assertTrue(InterviewSessionUiState.Listening::class in stateTypes)
@@ -93,6 +97,45 @@ class InterviewSessionViewModelTest {
         assertTrue(duplicate is ActionDispatchResult.Rejected)
         assertEquals(1, container.voiceSampleRecorder.startCount)
         assertTrue(viewModel.state.value is InterviewSessionUiState.Recording)
+    }
+
+    @Test
+    fun `captured sample waits for clone and can be discarded`() = runTest {
+        val container = FakeApplicationContainer()
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+
+        viewModel.dispatch(InterviewSessionAction.StartRecording(context))
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.FinishRecording))
+
+        assertTrue(viewModel.state.value is InterviewSessionUiState.VoiceSampleReady)
+        assertTrue(container.voiceCloningRepository.samples.isEmpty())
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.DiscardVoiceSample))
+        advanceUntilIdle()
+
+        assertEquals(InterviewSessionUiState.Setup(context), viewModel.state.value)
+        assertTrue(
+            container.voiceSampleRecorder.sample.temporaryFile in
+                container.temporaryFileCleaner.deletedFiles,
+        )
+    }
+
+    @Test
+    fun `saved voice profile can be reused from setup`() = runTest {
+        val container = FakeApplicationContainer()
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+        val preferences = SessionPreferences(
+            context,
+            container.voiceCloningRepository.profile,
+        )
+
+        assertAccepted(
+            viewModel.dispatch(InterviewSessionAction.ReuseVoiceProfile(preferences)),
+        )
+
+        assertEquals(
+            InterviewSessionUiState.Ready(preferences.context, preferences.voiceProfile),
+            viewModel.state.value,
+        )
     }
 
     @Test
@@ -122,6 +165,7 @@ class InterviewSessionViewModelTest {
 
         viewModel.dispatch(InterviewSessionAction.StartRecording(context))
         viewModel.dispatch(InterviewSessionAction.FinishRecording)
+        viewModel.dispatch(InterviewSessionAction.CloneVoice)
         advanceUntilIdle()
 
         val error = viewModel.state.value as InterviewSessionUiState.RecoverableError
@@ -183,6 +227,7 @@ class InterviewSessionViewModelTest {
     ) {
         viewModel.dispatch(InterviewSessionAction.StartRecording(context))
         viewModel.dispatch(InterviewSessionAction.FinishRecording)
+        viewModel.dispatch(InterviewSessionAction.CloneVoice)
         advanceUntilIdle()
         assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
     }
