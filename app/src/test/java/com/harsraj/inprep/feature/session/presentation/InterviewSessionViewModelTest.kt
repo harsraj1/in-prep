@@ -124,7 +124,7 @@ class InterviewSessionViewModelTest {
         advanceUntilIdle()
         val review = viewModel.state.value as InterviewSessionUiState.QuestionReady
         assertEquals("How do you diagnose ANRs?", review.transcript)
-        assertTrue(container.answerGenerationRepository.requests.isEmpty())
+        assertTrue(container.fakeAnswerGenerationRepository.requests.isEmpty())
 
         assertAccepted(
             viewModel.dispatch(InterviewSessionAction.GenerateFromTranscript("How do you prevent ANRs?")),
@@ -132,7 +132,7 @@ class InterviewSessionViewModelTest {
         advanceUntilIdle()
         assertEquals(
             "How do you prevent ANRs?",
-            container.answerGenerationRepository.requests.single().second.text,
+            container.fakeAnswerGenerationRepository.requests.single().second.text,
         )
     }
 

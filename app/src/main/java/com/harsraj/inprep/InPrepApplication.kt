@@ -11,6 +11,7 @@ import com.harsraj.inprep.feature.session.data.recording.PrivateVoiceSampleStore
 import com.harsraj.inprep.feature.session.data.speech.AndroidSpeechRecognitionRepository
 import com.harsraj.inprep.feature.voicebox.data.PrivateGeneratedAudioStore
 import com.harsraj.inprep.feature.voicebox.data.VoiceboxVoiceServices
+import com.harsraj.inprep.feature.gemini.data.GeminiInteractionsRepository
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,15 @@ class InPrepApplication : Application() {
             generatedAudio = generatedAudioStore,
             debugLog = { message -> if (BuildConfig.DEBUG) android.util.Log.d("Voicebox", message) },
         )
+        val gemini = GeminiInteractionsRepository(
+            client = OkHttpClient.Builder()
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(45, TimeUnit.SECONDS)
+                .callTimeout(60, TimeUnit.SECONDS)
+                .build(),
+            apiKeyProvider = { BuildConfig.GEMINI_API_KEY },
+            debugLog = { message -> if (BuildConfig.DEBUG) android.util.Log.d("Gemini", message) },
+        )
         FakeApplicationContainer(
             settingsRepository = settingsRepository,
             voiceSampleRecorder = AndroidVoiceSampleRecorder(this, sampleStore, applicationScope),
@@ -56,6 +66,7 @@ class InPrepApplication : Application() {
             voiceCloningRepository = voicebox,
             audioSynthesisRepository = voicebox,
             speechRecognitionRepository = AndroidSpeechRecognitionRepository(this),
+            answerGenerationRepository = gemini,
         )
     }
 }

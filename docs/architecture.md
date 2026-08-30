@@ -303,11 +303,24 @@ actions, cancellation, and host-stop cleanup. Device recognition engines differ,
 permission UI, service availability, network/offline behavior, and actual microphone
 release also require the README physical-device checks.
 
+## Phase 7 Gemini boundary
+
+`GeminiInteractionsRepository` is the only owner of the stable `v1` Interactions
+API contract. It implements the vendor-neutral answer repository, receives its
+credential through constructor injection, sends `store: false`, requests a bounded
+structured response from stable `gemini-3.7-flash`, and maps transport, quota,
+safety, authentication, server, parsing, and length failures into recoverable UI
+errors. Cancellation closes the active OkHttp call.
+
+`GeminiPromptBuilder` validates local character limits and serializes company,
+role, question, and answer style into an explicitly untrusted JSON data block.
+System instructions prohibit those fields from overriding policy and prohibit
+unverified company or insider claims. Voicebox has no confirmed paralinguistic-tag
+contract, so only clean `spokenAnswer` text reaches the visible UI and synthesis.
+Exact evidence and credential limitations are in `docs/gemini-integration.md`.
+
 ## Decisions requiring verification
 
-- The currently supported official Gemini Android/API integration, model ID,
-  request schema, safety behavior, and structured-output support. These must be
-  verified from official Google documentation immediately before integration.
 - Whether speech recognition is on-device on each supported device remains a
   runtime/device property and requires appropriate disclosure.
 - Voice profile and server-side audio retention/deletion policy.

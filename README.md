@@ -2,8 +2,8 @@
 
 In Prep is an Android interview-preparation app. The current build provides the
 accessible Jetpack Compose experience, persistent non-secret preferences,
-lifecycle-safe local voice-sample capture, Android speech recognition, and a
-verified Voicebox v0.5.0 LAN adapter. Gemini requests still use an in-memory fake.
+lifecycle-safe local voice-sample capture, Android speech recognition, tailored
+Gemini answers, and a verified Voicebox v0.5.0 LAN adapter.
 
 ## Prerequisites
 
@@ -145,4 +145,6 @@ files promptly, secure all network transport, and document any server-side
 retention or sharing.
 
 See [the architecture notes](docs/architecture.md) and the
-[verified Voicebox contract](docs/voicebox-api.md).
+[verified Voicebox contract](docs/voicebox-api.md). The current Gemini model,
+wire contract, safety behavior, and credential boundary are documented in
+[the Gemini integration notes](docs/gemini-integration.md).
