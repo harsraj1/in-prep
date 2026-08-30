@@ -1,8 +1,21 @@
+import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.isFile) file.inputStream().use { load(it) }
+}
+val localGeminiApiKey = providers.gradleProperty("GEMINI_API_KEY")
+    .orElse(providers.provider { localProperties.getProperty("GEMINI_API_KEY", "") })
+val escapedGeminiApiKey = localGeminiApiKey.get()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 
 android {
     namespace = "com.harsraj.inprep"
@@ -19,7 +32,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // DEVELOPMENT ONLY: values in BuildConfig are extractable from the APK.
+            // Production Gemini traffic must use a secret-preserving backend proxy.
+            buildConfigField("String", "GEMINI_API_KEY", "\"$escapedGeminiApiKey\"")
+        }
         release {
+            buildConfigField("String", "GEMINI_API_KEY", "\"\"")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -33,13 +52,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
     }
 
     buildFeatures {
         compose = true
-        buildConfig = false
+        buildConfig = true
     }
 }
 
@@ -50,6 +71,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
+    implementation("androidx.datastore:datastore-preferences:1.1.7")
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")

@@ -18,6 +18,9 @@ import com.harsraj.inprep.feature.session.domain.model.TemporaryFileReference
 import com.harsraj.inprep.feature.session.domain.model.VoiceProfileId
 import com.harsraj.inprep.feature.session.domain.model.VoiceProfileReference
 import com.harsraj.inprep.feature.session.domain.model.VoiceSampleMetadata
+import com.harsraj.inprep.feature.settings.domain.AppSettings
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.yield
 
 class FakeVoiceSampleRecorder(
@@ -226,26 +229,48 @@ class FakeAudioPlaybackRepository : AudioPlaybackRepository {
 class FakeSettingsRepository(
     var preferences: SessionPreferences? = null,
 ) : SettingsRepository {
+    private val mutableSettings = MutableStateFlow(
+        AppSettings(
+            interviewContext = preferences?.context,
+            voiceProfile = preferences?.voiceProfile,
+        ),
+    )
+    override val settings: StateFlow<AppSettings> = mutableSettings
     var saveCount = 0
         private set
     var clearCount = 0
         private set
 
-    override suspend fun loadSessionPreferences(): SessionPreferences? {
+    override suspend fun loadSettings(): AppSettings {
         yield()
-        return preferences
+        return mutableSettings.value
+    }
+
+    override suspend fun saveInterviewContext(context: InterviewContext) {
+        yield()
+        mutableSettings.value = mutableSettings.value.copy(interviewContext = context)
     }
 
     override suspend fun saveSessionPreferences(preferences: SessionPreferences) {
         yield()
         saveCount += 1
         this.preferences = preferences
+        mutableSettings.value = mutableSettings.value.copy(
+            interviewContext = preferences.context,
+            voiceProfile = preferences.voiceProfile,
+        )
     }
 
-    override suspend fun clearSessionPreferences() {
+    override suspend fun saveVoiceboxBaseUrl(baseUrl: String) {
+        yield()
+        mutableSettings.value = mutableSettings.value.copy(voiceboxBaseUrl = baseUrl)
+    }
+
+    override suspend fun reset() {
         yield()
         clearCount += 1
         preferences = null
+        mutableSettings.value = AppSettings()
     }
 }
 

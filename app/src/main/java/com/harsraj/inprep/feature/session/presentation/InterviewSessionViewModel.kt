@@ -48,6 +48,24 @@ class InterviewSessionViewModel(
     private var operationJob: Job? = null
     private var retryOperation: RetryOperation? = null
 
+    init {
+        if (initialPreferences == null) {
+            viewModelScope.launch(dispatcher) {
+                val saved = settingsRepository.loadSettings()
+                if (mutableState.value is InterviewSessionUiState.Setup) {
+                    saved.reusableSessionPreferences?.let { preferences ->
+                        mutableState.value = InterviewSessionUiState.Ready(
+                            preferences.context,
+                            preferences.voiceProfile,
+                        )
+                    } ?: saved.interviewContext?.let { context ->
+                        mutableState.value = InterviewSessionUiState.Setup(context)
+                    }
+                }
+            }
+        }
+    }
+
     fun dispatch(action: InterviewSessionAction): ActionDispatchResult {
         val current = mutableState.value
         if (!isValid(action, current)) {
@@ -89,6 +107,7 @@ class InterviewSessionViewModel(
     private fun startRecording(context: InterviewContext) {
         try {
             voiceSampleRecorder.start()
+            launchOperation { settingsRepository.saveInterviewContext(context) }
             retryOperation = null
             mutableState.value = InterviewSessionUiState.Recording(context)
         } catch (error: Exception) {
@@ -406,7 +425,7 @@ class InterviewSessionViewModel(
         launchOperation {
             runCatching { audioPlaybackRepository.stop() }
             temporaryFileCleaner.deleteAll()
-            settingsRepository.clearSessionPreferences()
+            settingsRepository.reset()
         }
     }
 

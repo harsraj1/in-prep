@@ -8,6 +8,8 @@ import com.harsraj.inprep.feature.session.domain.model.SessionPreferences
 import com.harsraj.inprep.feature.session.domain.model.TemporaryFileReference
 import com.harsraj.inprep.feature.session.domain.model.VoiceProfileReference
 import com.harsraj.inprep.feature.session.domain.model.VoiceSampleMetadata
+import com.harsraj.inprep.feature.settings.domain.AppSettings
+import kotlinx.coroutines.flow.Flow
 
 interface VoiceSampleRecorder {
     fun start()
@@ -54,11 +56,17 @@ interface AudioPlaybackRepository {
 }
 
 interface SettingsRepository {
-    suspend fun loadSessionPreferences(): SessionPreferences?
+    val settings: Flow<AppSettings>
+
+    suspend fun loadSettings(): AppSettings
+
+    suspend fun saveInterviewContext(context: InterviewContext)
 
     suspend fun saveSessionPreferences(preferences: SessionPreferences)
 
-    suspend fun clearSessionPreferences()
+    suspend fun saveVoiceboxBaseUrl(baseUrl: String)
+
+    suspend fun reset()
 }
 
 interface TemporaryFileCleaner {

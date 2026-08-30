@@ -1,6 +1,7 @@
 package com.harsraj.inprep.feature.session.presentation
 
 import com.harsraj.inprep.di.FakeApplicationContainer
+import com.harsraj.inprep.feature.session.data.fake.FakeSettingsRepository
 import com.harsraj.inprep.feature.session.data.fake.FakePlaybackState
 import com.harsraj.inprep.feature.session.domain.model.InterviewContext
 import com.harsraj.inprep.feature.session.domain.model.SessionPreferences
@@ -176,7 +177,7 @@ class InterviewSessionViewModelTest {
 
         assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
         assertEquals(2, container.voiceCloningRepository.samples.size)
-        assertEquals(1, container.settingsRepository.saveCount)
+        assertEquals(1, (container.settingsRepository as FakeSettingsRepository).saveCount)
     }
 
     @Test
@@ -217,8 +218,9 @@ class InterviewSessionViewModelTest {
         advanceUntilIdle()
 
         assertEquals(InterviewSessionUiState.Setup(), viewModel.state.value)
-        assertEquals(null, container.settingsRepository.preferences)
-        assertEquals(1, container.settingsRepository.clearCount)
+        val settings = container.settingsRepository as FakeSettingsRepository
+        assertEquals(null, settings.preferences)
+        assertEquals(1, settings.clearCount)
         assertEquals(2, container.temporaryFileCleaner.deleteAllCount)
     }
 

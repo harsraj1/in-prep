@@ -194,9 +194,9 @@ recognizers, players, and temporary files on stop and lifecycle teardown.
   LAN address, for example `http://192.168.1.50:17493/`. The example is not a
   confirmed API contract or a hard-coded default.
 - Cleartext HTTP is permitted only in debug builds for this trusted-LAN
-  development topology. A later implementation must scope any Android
-  cleartext-network exception to debug configuration and the intended private
-  host; release builds must not broadly permit cleartext traffic.
+  development topology. Android's debug network configuration cannot narrowly
+  scope a runtime-selected IP, so strict private-address validation provides
+  the host boundary; release builds reject cleartext traffic.
 - Public HTTP addresses, public tunnels, router port forwarding, UPnP exposure,
   and firewall rules allowing Public-profile access are prohibited.
 - The Voicebox host firewall may allow the chosen port only on the Private
@@ -204,6 +204,38 @@ recognizers, players, and temporary files on stop and lifecycle teardown.
 - This topology does not make voice data non-sensitive. The app and service
   must still minimize retention and protect voice samples, profiles, prompts,
   and generated audio from other devices and users on the LAN.
+
+## Phase 3 configuration and persistence
+
+`DataStoreSettingsRepository` is the durable implementation of the domain
+`SettingsRepository`. It stores only company, role, the validated Voicebox base
+URL, and the non-sensitive voice-profile reference and timestamp. It never
+stores voice samples, generated answers, generated audio, or credentials.
+DataStore is application-scoped, so these values survive Activity recreation
+and normal process restart. Reset clears the complete preference store.
+
+The application container still injects fake interview services, but injects
+the DataStore settings implementation in the running app. State-machine unit
+tests continue to inject the in-memory fake. On startup, the session ViewModel
+loads persisted metadata: a complete context/profile pair restores `Ready`; a
+context without a profile pre-fills `Setup`.
+
+`VoiceboxBaseUrlValidator` is the transport-policy boundary. HTTPS is accepted
+in all variants. HTTP is accepted only when the caller identifies a debug build
+and every DNS result is loopback, link-local, private IPv4, or IPv6 unique-local.
+URLs containing credentials, query strings, fragments, or non-root paths are
+rejected. The base URL is normalized with a trailing slash before persistence.
+
+Android Network Security Configuration cannot narrowly enumerate a dynamic LAN
+IP. The main manifest therefore denies cleartext, while the debug manifest has
+a necessarily broad cleartext override. All future Voicebox adapters must call
+the validator before creating or issuing a request. Release receives no LAN URL
+default and cannot persist an HTTP URL.
+
+The debug-only `BuildConfig.GEMINI_API_KEY` is loaded from ignored
+`local.properties` or user-level Gradle properties. It is deliberately empty in
+release. This does not make the debug key secret—APK contents are extractable—so
+production Gemini access remains behind a backend proxy trust boundary.
 
 ## Decisions requiring verification
 

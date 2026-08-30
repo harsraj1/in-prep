@@ -9,17 +9,19 @@ import com.harsraj.inprep.feature.session.data.fake.FakeTemporaryFileCleaner
 import com.harsraj.inprep.feature.session.data.fake.FakeVoiceCloningRepository
 import com.harsraj.inprep.feature.session.data.fake.FakeVoiceSampleRecorder
 import com.harsraj.inprep.feature.session.presentation.InterviewSessionViewModel
+import com.harsraj.inprep.feature.session.domain.SettingsRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 
-class FakeApplicationContainer {
+class FakeApplicationContainer(
+    val settingsRepository: SettingsRepository = FakeSettingsRepository(),
+) {
     val voiceSampleRecorder = FakeVoiceSampleRecorder()
     val voiceCloningRepository = FakeVoiceCloningRepository()
     val answerGenerationRepository = FakeAnswerGenerationRepository()
     val speechRecognitionRepository = FakeSpeechRecognitionRepository()
     val audioSynthesisRepository = FakeAudioSynthesisRepository()
     val audioPlaybackRepository = FakeAudioPlaybackRepository()
-    val settingsRepository = FakeSettingsRepository()
     val temporaryFileCleaner = FakeTemporaryFileCleaner()
 
     fun createInterviewSessionViewModel(
@@ -33,7 +35,7 @@ class FakeApplicationContainer {
         audioPlaybackRepository = audioPlaybackRepository,
         settingsRepository = settingsRepository,
         temporaryFileCleaner = temporaryFileCleaner,
-        initialPreferences = settingsRepository.preferences,
+        initialPreferences = (settingsRepository as? FakeSettingsRepository)?.preferences,
         dispatcher = dispatcher,
     )
 }

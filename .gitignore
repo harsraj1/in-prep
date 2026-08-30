@@ -20,6 +20,7 @@ build/
 **/build/
 captures/
 .kotlin/
+*.hprof
 
 # Android Studio / IntelliJ IDEA
 .idea/

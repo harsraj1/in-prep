@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -26,11 +27,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by sessionViewModel.state.collectAsStateWithLifecycle()
             val container = (application as InPrepApplication).container
+            val settings by container.settingsRepository.settings.collectAsState(
+                initial = com.harsraj.inprep.feature.settings.domain.AppSettings(),
+            )
 
             InPrepTheme {
                 InterviewPreparationScreen(
                     uiState = state,
-                    reusablePreferences = container.settingsRepository.preferences,
+                    reusablePreferences = settings.reusableSessionPreferences,
                     onAction = sessionViewModel::dispatch,
                 )
             }
