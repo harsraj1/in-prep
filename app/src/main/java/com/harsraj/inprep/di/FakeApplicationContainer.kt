@@ -12,6 +12,7 @@ import com.harsraj.inprep.feature.session.presentation.InterviewSessionViewModel
 import com.harsraj.inprep.feature.session.domain.SettingsRepository
 import com.harsraj.inprep.feature.session.domain.TemporaryFileCleaner
 import com.harsraj.inprep.feature.session.domain.AudioSynthesisRepository
+import com.harsraj.inprep.feature.session.domain.AudioPlaybackRepository
 import com.harsraj.inprep.feature.session.domain.AnswerGenerationRepository
 import com.harsraj.inprep.feature.session.domain.VoiceCloningRepository
 import com.harsraj.inprep.feature.session.domain.VoiceSampleRecorder
@@ -27,6 +28,7 @@ class FakeApplicationContainer(
     val audioSynthesisRepository: AudioSynthesisRepository = FakeAudioSynthesisRepository(),
     val speechRecognitionRepository: SpeechRecognitionRepository = FakeSpeechRecognitionRepository(),
     val answerGenerationRepository: AnswerGenerationRepository = FakeAnswerGenerationRepository(),
+    val audioPlaybackRepository: AudioPlaybackRepository = FakeAudioPlaybackRepository(),
 ) {
     val fakeVoiceSampleRecorder: FakeVoiceSampleRecorder
         get() = voiceSampleRecorder as FakeVoiceSampleRecorder
@@ -40,7 +42,8 @@ class FakeApplicationContainer(
         get() = speechRecognitionRepository as FakeSpeechRecognitionRepository
     val fakeAudioSynthesisRepository: FakeAudioSynthesisRepository
         get() = audioSynthesisRepository as FakeAudioSynthesisRepository
-    val audioPlaybackRepository = FakeAudioPlaybackRepository()
+    val fakeAudioPlaybackRepository: FakeAudioPlaybackRepository
+        get() = audioPlaybackRepository as FakeAudioPlaybackRepository
 
     fun createInterviewSessionViewModel(
         dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,

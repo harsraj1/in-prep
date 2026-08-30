@@ -74,6 +74,8 @@ interface AudioSynthesisRepository {
 }
 
 interface AudioPlaybackRepository {
+    val status: StateFlow<AudioPlaybackStatus>
+
     suspend fun play(audio: GeneratedAudioReference)
 
     suspend fun pause()
@@ -81,6 +83,16 @@ interface AudioPlaybackRepository {
     suspend fun resume()
 
     suspend fun stop()
+
+    fun release()
+}
+
+sealed interface AudioPlaybackStatus {
+    data object Idle : AudioPlaybackStatus
+    data object Playing : AudioPlaybackStatus
+    data object Paused : AudioPlaybackStatus
+    data object Completed : AudioPlaybackStatus
+    data class Failed(val message: String) : AudioPlaybackStatus
 }
 
 interface SettingsRepository {

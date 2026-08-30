@@ -112,6 +112,32 @@ device, manually verify:
    release the microphone so voice-sample recording can subsequently start.
 5. Editing the transcript changes the question passed to answer generation.
 
+## Generated-answer playback
+
+Voicebox synthesis completes and streams a bounded WAV into
+`cacheDir/generated-audio` before **Start** becomes available. Playback uses stable
+Media3 ExoPlayer 1.11.0 rather than the platform `MediaPlayer`. Pause preserves the
+position, Resume continues it, and Stop/completion resets the player and removes
+the private temporary audio.
+
+ExoPlayer manages audio focus with speech audio attributes. Speech is paused rather
+than ducked when focus policy requires it, and headphone/Bluetooth route loss pauses
+playback instead of unexpectedly switching to the speaker. Backgrounding playback,
+Close, reset, ViewModel teardown, corruption, and unsupported audio all release or
+reset player resources. The session state machine prevents playback from overlapping
+voice recording, recognition, answer generation, or synthesis.
+
+Physical-device checks:
+
+1. Generate an answer, then verify Start is unavailable until synthesis finishes.
+2. Start, pause, resume, and stop; confirm resume preserves position and a later Start
+   begins prepared audio from the beginning.
+3. Let playback complete and verify the session returns to Ready for another question.
+4. During playback, unplug wired headphones or disconnect Bluetooth and verify audio
+   pauses instead of moving unexpectedly to the speaker.
+5. Trigger another app's audio focus and background In Prep; verify no audio or player
+   resource remains active. Close/reset during synthesis or playback must remain safe.
+
 ## Build and verify
 
 On Windows:

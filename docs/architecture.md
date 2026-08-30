@@ -319,6 +319,30 @@ unverified company or insider claims. Voicebox has no confirmed paralinguistic-t
 contract, so only clean `spokenAnswer` text reaches the visible UI and synthesis.
 Exact evidence and credential limitations are in `docs/gemini-integration.md`.
 
+## Phase 8 synthesis and playback boundary
+
+The verified Voicebox adapter completes synthesis and streams a capped WAV into the
+private generated-audio store before the state machine exposes `ReadyToPlay`.
+`Media3AudioPlaybackRepository` resolves only opaque references beneath that private
+cache and uses stable Media3 ExoPlayer 1.11.0. Media3 is preferred over `MediaPlayer`
+for its explicit state/error callbacks and built-in audio-focus/noisy-route behavior.
+
+Speech audio attributes enable ExoPlayer-managed audio focus. The speech policy
+pauses for focus changes rather than lowering intelligibility through ducking, and
+`setHandleAudioBecomingNoisy(true)` pauses on headphone or route disconnect.
+`AudioPlaybackStatus` reports Playing, Paused, Completed, Failed, and Idle back to
+the single session state machine. Completion resets the player, returns to Ready,
+and deletes the WAV; corruption becomes a recoverable playback error. Stop, host
+backgrounding, close, reset, and ViewModel teardown stop/release resources and clean
+temporary audio. Existing state validity provides mutual exclusion with recording,
+recognition, generation, and synthesis.
+
+JVM tests exercise completion, interruption/error, rapid duplicate actions, stop,
+close, and cleanup. A connected-device test creates a short synthetic silent PCM WAV
+at runtime (no personal voice fixture), verifies play/pause/resume/completion/stop,
+then deletes it. Actual audio focus and route-loss behavior remains a physical-device
+manual check documented in the README.
+
 ## Decisions requiring verification
 
 - Whether speech recognition is on-device on each supported device remains a

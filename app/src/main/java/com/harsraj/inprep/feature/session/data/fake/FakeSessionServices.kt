@@ -2,6 +2,7 @@ package com.harsraj.inprep.feature.session.data.fake
 
 import com.harsraj.inprep.feature.session.domain.AnswerGenerationRepository
 import com.harsraj.inprep.feature.session.domain.AudioPlaybackRepository
+import com.harsraj.inprep.feature.session.domain.AudioPlaybackStatus
 import com.harsraj.inprep.feature.session.domain.AudioSynthesisRepository
 import com.harsraj.inprep.feature.session.domain.SettingsRepository
 import com.harsraj.inprep.feature.session.domain.SpeechRecognitionRepository
@@ -219,6 +220,8 @@ enum class FakePlaybackState {
 }
 
 class FakeAudioPlaybackRepository : AudioPlaybackRepository {
+    private val mutableStatus = MutableStateFlow<AudioPlaybackStatus>(AudioPlaybackStatus.Idle)
+    override val status: StateFlow<AudioPlaybackStatus> = mutableStatus
     var playbackState = FakePlaybackState.STOPPED
         private set
     var lastAudio: GeneratedAudioReference? = null
@@ -239,6 +242,7 @@ class FakeAudioPlaybackRepository : AudioPlaybackRepository {
         lastAudio = audio
         playCount += 1
         playbackState = FakePlaybackState.PLAYING
+        mutableStatus.value = AudioPlaybackStatus.Playing
     }
 
     override suspend fun pause() {
@@ -246,6 +250,7 @@ class FakeAudioPlaybackRepository : AudioPlaybackRepository {
         failIfRequested()
         pauseCount += 1
         playbackState = FakePlaybackState.PAUSED
+        mutableStatus.value = AudioPlaybackStatus.Paused
     }
 
     override suspend fun resume() {
@@ -253,12 +258,29 @@ class FakeAudioPlaybackRepository : AudioPlaybackRepository {
         failIfRequested()
         resumeCount += 1
         playbackState = FakePlaybackState.PLAYING
+        mutableStatus.value = AudioPlaybackStatus.Playing
     }
 
     override suspend fun stop() {
         yield()
         stopCount += 1
         playbackState = FakePlaybackState.STOPPED
+        mutableStatus.value = AudioPlaybackStatus.Idle
+    }
+
+    fun complete() {
+        playbackState = FakePlaybackState.STOPPED
+        mutableStatus.value = AudioPlaybackStatus.Completed
+    }
+
+    fun fail(message: String) {
+        playbackState = FakePlaybackState.STOPPED
+        mutableStatus.value = AudioPlaybackStatus.Failed(message)
+    }
+
+    override fun release() {
+        playbackState = FakePlaybackState.STOPPED
+        mutableStatus.value = AudioPlaybackStatus.Idle
     }
 
     private fun failIfRequested() {

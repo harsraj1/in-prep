@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.harsraj.inprep.feature.session.domain.AnswerGenerationRepository
 import com.harsraj.inprep.feature.session.domain.AudioPlaybackRepository
+import com.harsraj.inprep.feature.session.domain.AudioPlaybackStatus
 import com.harsraj.inprep.feature.session.domain.AudioSynthesisRepository
 import com.harsraj.inprep.feature.session.domain.SettingsRepository
 import com.harsraj.inprep.feature.session.domain.SpeechRecognitionRepository
@@ -106,6 +107,34 @@ class InterviewSessionViewModel(
                 }
             }
         }
+        viewModelScope.launch(dispatcher) {
+            audioPlaybackRepository.status.collect { playbackStatus ->
+                val current = mutableState.value
+                when {
+                    playbackStatus == AudioPlaybackStatus.Completed &&
+                        current is InterviewSessionUiState.Playing -> playbackCompleted(current.content)
+                    playbackStatus == AudioPlaybackStatus.Paused &&
+                        current is InterviewSessionUiState.Playing -> {
+                        mutableState.value = InterviewSessionUiState.Paused(current.content)
+                    }
+                    playbackStatus is AudioPlaybackStatus.Failed &&
+                        (current is InterviewSessionUiState.Playing || current is InterviewSessionUiState.Paused) -> {
+                        val content = when (current) {
+                            is InterviewSessionUiState.Playing -> current.content
+                            is InterviewSessionUiState.Paused -> current.content
+                            else -> error("Validated playback state changed unexpectedly")
+                        }
+                        audioPlaybackRepository.stop()
+                        retryOperation = RetryOperation.Play(content)
+                        showError(
+                            RecoveryPoint.ReadyToPlay(content),
+                            FailedStage.PLAYBACK,
+                            IllegalStateException(playbackStatus.message),
+                        )
+                    }
+                }
+            }
+        }
         if (initialPreferences == null) {
             viewModelScope.launch(dispatcher) {
                 val saved = settingsRepository.loadSettings()
@@ -125,15 +154,20 @@ class InterviewSessionViewModel(
 
     fun onHostStopped() {
         if (mutableState.value is InterviewSessionUiState.Recording ||
-            mutableState.value is InterviewSessionUiState.Listening
+            mutableState.value is InterviewSessionUiState.Listening ||
+            mutableState.value is InterviewSessionUiState.Playing ||
+            mutableState.value is InterviewSessionUiState.Paused
         ) {
-            dispatch(InterviewSessionAction.Cancel)
+            if (mutableState.value is InterviewSessionUiState.Playing ||
+                mutableState.value is InterviewSessionUiState.Paused
+            ) dispatch(InterviewSessionAction.Stop) else dispatch(InterviewSessionAction.Cancel)
         }
     }
 
     override fun onCleared() {
         voiceSampleRecorder.cancel()
         speechRecognitionRepository.destroy()
+        audioPlaybackRepository.release()
         super.onCleared()
     }
 
@@ -419,6 +453,7 @@ class InterviewSessionViewModel(
     private fun playbackCompleted(content: PlaybackContent) {
         mutableState.value = InterviewSessionUiState.Ready(content.context, content.voiceProfile)
         launchOperation {
+            audioPlaybackRepository.stop()
             temporaryFileCleaner.delete(content.audio.temporaryFile)
         }
     }

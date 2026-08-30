@@ -57,16 +57,16 @@ class InterviewSessionViewModelTest {
         assertAccepted(viewModel.dispatch(InterviewSessionAction.Play))
         assertTrue(viewModel.state.value is InterviewSessionUiState.Playing)
         advanceUntilIdle()
-        assertEquals(FakePlaybackState.PLAYING, container.audioPlaybackRepository.playbackState)
+        assertEquals(FakePlaybackState.PLAYING, container.fakeAudioPlaybackRepository.playbackState)
 
         assertAccepted(viewModel.dispatch(InterviewSessionAction.Pause))
         assertTrue(viewModel.state.value is InterviewSessionUiState.Paused)
         advanceUntilIdle()
-        assertEquals(FakePlaybackState.PAUSED, container.audioPlaybackRepository.playbackState)
+        assertEquals(FakePlaybackState.PAUSED, container.fakeAudioPlaybackRepository.playbackState)
 
         assertAccepted(viewModel.dispatch(InterviewSessionAction.Resume))
         advanceUntilIdle()
-        assertEquals(FakePlaybackState.PLAYING, container.audioPlaybackRepository.playbackState)
+        assertEquals(FakePlaybackState.PLAYING, container.fakeAudioPlaybackRepository.playbackState)
 
         assertAccepted(viewModel.dispatch(InterviewSessionAction.PlaybackCompleted))
         advanceUntilIdle()
@@ -277,12 +277,38 @@ class InterviewSessionViewModelTest {
         assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
         advanceUntilIdle()
 
-        assertEquals(FakePlaybackState.STOPPED, container.audioPlaybackRepository.playbackState)
-        assertEquals(1, container.audioPlaybackRepository.stopCount)
+        assertEquals(FakePlaybackState.STOPPED, container.fakeAudioPlaybackRepository.playbackState)
+        assertEquals(1, container.fakeAudioPlaybackRepository.stopCount)
         assertTrue(
             container.fakeAudioSynthesisRepository.audio.temporaryFile in
                 container.fakeTemporaryFileCleaner.deletedFiles,
         )
+    }
+
+    @Test
+    fun `player completion and interruption statuses drive session state`() = runTest {
+        val container = FakeApplicationContainer()
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+        createReadyToPlaySession(viewModel)
+        val audio = container.fakeAudioSynthesisRepository.audio.temporaryFile
+
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.Play))
+        advanceUntilIdle()
+        container.fakeAudioPlaybackRepository.complete()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
+        assertTrue(audio in container.fakeTemporaryFileCleaner.deletedFiles)
+
+        createReadyToPlaySession(viewModel)
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.Play))
+        val duplicate = viewModel.dispatch(InterviewSessionAction.Play)
+        assertTrue(duplicate is ActionDispatchResult.Rejected)
+        advanceUntilIdle()
+        container.fakeAudioPlaybackRepository.fail("Generated audio is corrupt or unsupported")
+        advanceUntilIdle()
+        val error = viewModel.state.value as InterviewSessionUiState.RecoverableError
+        assertEquals(FailedStage.PLAYBACK, error.failedStage)
+        assertEquals(FakePlaybackState.STOPPED, container.fakeAudioPlaybackRepository.playbackState)
     }
 
     @Test
@@ -322,7 +348,7 @@ class InterviewSessionViewModelTest {
     private suspend fun kotlinx.coroutines.test.TestScope.createReadyToPlaySession(
         viewModel: InterviewSessionViewModel,
     ) {
-        createReadySession(viewModel)
+        if (viewModel.state.value !is InterviewSessionUiState.Ready) createReadySession(viewModel)
         viewModel.dispatch(InterviewSessionAction.StartListening)
         viewModel.dispatch(InterviewSessionAction.FinishListening)
         advanceUntilIdle()

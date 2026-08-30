@@ -7,7 +7,10 @@ import com.harsraj.inprep.feature.session.domain.model.TemporaryFileReference
 import java.io.File
 import java.util.UUID
 
-class PrivateGeneratedAudioStore(context: Context) : TemporaryFileCleaner, GeneratedAudioTargetStore {
+class PrivateGeneratedAudioStore(context: Context) :
+    TemporaryFileCleaner,
+    GeneratedAudioTargetStore,
+    GeneratedAudioFileProvider {
     private val directory = File(context.cacheDir, "generated-audio")
 
     override fun createWavTarget(): GeneratedAudioTarget {
@@ -28,6 +31,10 @@ class PrivateGeneratedAudioStore(context: Context) : TemporaryFileCleaner, Gener
         directory.listFiles()?.filter { nowMillis - it.lastModified() > maxAgeMillis }?.forEach(File::delete)
     }
 
+    override fun requireFile(reference: TemporaryFileReference): File = fileFor(reference).also {
+        require(it.isFile && it.length() > 0) { "Generated audio is missing from private cache" }
+    }
+
     private fun fileFor(reference: TemporaryFileReference): File {
         val file = File(directory, "${reference.id.value}.wav")
         check(file.canonicalFile.parentFile == directory.canonicalFile)
@@ -38,6 +45,10 @@ class PrivateGeneratedAudioStore(context: Context) : TemporaryFileCleaner, Gener
 
 fun interface GeneratedAudioTargetStore {
     fun createWavTarget(): GeneratedAudioTarget
+}
+
+fun interface GeneratedAudioFileProvider {
+    fun requireFile(reference: TemporaryFileReference): File
 }
 
 data class GeneratedAudioTarget(

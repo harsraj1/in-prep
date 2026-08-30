@@ -9,6 +9,7 @@ import com.harsraj.inprep.feature.session.data.recording.AndroidVoiceSampleRecor
 import com.harsraj.inprep.feature.session.data.recording.CompositeTemporaryFileCleaner
 import com.harsraj.inprep.feature.session.data.recording.PrivateVoiceSampleStore
 import com.harsraj.inprep.feature.session.data.speech.AndroidSpeechRecognitionRepository
+import com.harsraj.inprep.feature.session.data.playback.Media3AudioPlaybackRepository
 import com.harsraj.inprep.feature.voicebox.data.PrivateGeneratedAudioStore
 import com.harsraj.inprep.feature.voicebox.data.VoiceboxVoiceServices
 import com.harsraj.inprep.feature.gemini.data.GeminiInteractionsRepository
@@ -59,6 +60,7 @@ class InPrepApplication : Application() {
             apiKeyProvider = { BuildConfig.GEMINI_API_KEY },
             debugLog = { message -> if (BuildConfig.DEBUG) android.util.Log.d("Gemini", message) },
         )
+        val playback = Media3AudioPlaybackRepository(this, generatedAudioStore)
         FakeApplicationContainer(
             settingsRepository = settingsRepository,
             voiceSampleRecorder = AndroidVoiceSampleRecorder(this, sampleStore, applicationScope),
@@ -67,6 +69,7 @@ class InPrepApplication : Application() {
             audioSynthesisRepository = voicebox,
             speechRecognitionRepository = AndroidSpeechRecognitionRepository(this),
             answerGenerationRepository = gemini,
+            audioPlaybackRepository = playback,
         )
     }
 }
