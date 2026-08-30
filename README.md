@@ -2,9 +2,8 @@
 
 In Prep is an Android interview-preparation app. The current build provides the
 accessible Jetpack Compose experience, persistent non-secret preferences,
-lifecycle-safe local voice-sample capture, and in-memory network-service fakes.
-Speech recognition, Gemini requests, and Voicebox requests are intentionally not
-integrated yet.
+lifecycle-safe local voice-sample capture, and a verified Voicebox v0.5.0 LAN
+adapter. Speech recognition and Gemini requests still use in-memory fakes.
 
 ## Prerequisites
 
@@ -22,7 +21,11 @@ integrated yet.
    ignored root `local.properties`, or to your user-level Gradle properties file
    (`~/.gradle/gradle.properties`). Never add it to the repository's tracked
    `gradle.properties`.
-5. Sync Gradle, then run the `app` configuration on an API 26+ emulator or
+5. For Voicebox development, add a private-LAN URL such as
+   `VOICEBOX_BASE_URL=http://192.168.1.50:17493/` to ignored
+   `local.properties`. Replace the example with the Voicebox computer's current
+   private address; no URL is shipped in release.
+6. Sync Gradle, then run the `app` configuration on an API 26+ emulator or
    device.
 
 Do not put real credentials in tracked Gradle files, source files, resources,
@@ -33,9 +36,8 @@ does not ship secrets in the app. Release builds receive an empty Gemini value.
 
 ## Voicebox on a trusted LAN
 
-The persisted Voicebox base URL contains no credential. Configure it through
-the settings repository/UI added around the real adapter in a later phase. A
-valid physical-device example is `http://192.168.1.50:17493/`, where the address
+The persisted Voicebox base URL contains no credential. A valid physical-device
+example is `http://192.168.1.50:17493/`, where the address
 is the Voicebox computer's private LAN address. It is a placeholder example,
 not an application default.
 
@@ -71,9 +73,10 @@ Samples must be 3–30 seconds. They are captured as mono AAC audio in an MPEG-4
 expiry remove temporary files. Raw recordings and generated answers are never
 stored in preferences or logs.
 
-This is an internal recording format, **not a claim of Voicebox compatibility**.
-The deployed Voicebox media contract is still unconfirmed, so any required
-conversion remains isolated behind `VoiceSampleFormatConverter`.
+Voicebox v0.5.0 explicitly accepts `.m4a`, so this format can be uploaded without
+conversion. The displayed sample script is sent as the required
+`reference_text` and must be spoken verbatim. The Voicebox adapter selects
+`chatterbox_turbo` for both the cloned profile and synthesis to minimize latency.
 
 Physical-device manual checks:
 
@@ -118,5 +121,5 @@ user consent, minimize retention, use app-private storage, delete temporary
 files promptly, secure all network transport, and document any server-side
 retention or sharing.
 
-See [the architecture notes](docs/architecture.md) for planned boundaries and
-unresolved integration decisions.
+See [the architecture notes](docs/architecture.md) and the
+[verified Voicebox contract](docs/voicebox-api.md).

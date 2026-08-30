@@ -11,6 +11,8 @@ import com.harsraj.inprep.feature.session.data.fake.FakeVoiceSampleRecorder
 import com.harsraj.inprep.feature.session.presentation.InterviewSessionViewModel
 import com.harsraj.inprep.feature.session.domain.SettingsRepository
 import com.harsraj.inprep.feature.session.domain.TemporaryFileCleaner
+import com.harsraj.inprep.feature.session.domain.AudioSynthesisRepository
+import com.harsraj.inprep.feature.session.domain.VoiceCloningRepository
 import com.harsraj.inprep.feature.session.domain.VoiceSampleRecorder
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -19,15 +21,19 @@ class FakeApplicationContainer(
     val settingsRepository: SettingsRepository = FakeSettingsRepository(),
     val voiceSampleRecorder: VoiceSampleRecorder = FakeVoiceSampleRecorder(),
     val temporaryFileCleaner: TemporaryFileCleaner = FakeTemporaryFileCleaner(),
+    val voiceCloningRepository: VoiceCloningRepository = FakeVoiceCloningRepository(),
+    val audioSynthesisRepository: AudioSynthesisRepository = FakeAudioSynthesisRepository(),
 ) {
     val fakeVoiceSampleRecorder: FakeVoiceSampleRecorder
         get() = voiceSampleRecorder as FakeVoiceSampleRecorder
     val fakeTemporaryFileCleaner: FakeTemporaryFileCleaner
         get() = temporaryFileCleaner as FakeTemporaryFileCleaner
-    val voiceCloningRepository = FakeVoiceCloningRepository()
+    val fakeVoiceCloningRepository: FakeVoiceCloningRepository
+        get() = voiceCloningRepository as FakeVoiceCloningRepository
     val answerGenerationRepository = FakeAnswerGenerationRepository()
     val speechRecognitionRepository = FakeSpeechRecognitionRepository()
-    val audioSynthesisRepository = FakeAudioSynthesisRepository()
+    val fakeAudioSynthesisRepository: FakeAudioSynthesisRepository
+        get() = audioSynthesisRepository as FakeAudioSynthesisRepository
     val audioPlaybackRepository = FakeAudioPlaybackRepository()
 
     fun createInterviewSessionViewModel(

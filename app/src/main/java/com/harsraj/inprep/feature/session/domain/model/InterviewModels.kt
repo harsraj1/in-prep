@@ -34,16 +34,22 @@ data class VoiceSampleMetadata(
     val durationMillis: Long,
     val createdAtEpochMillis: Long,
     val format: VoiceSampleFormat = VoiceSampleFormat.M4A_AAC,
+    val referenceText: String = VoiceSampleScript.TEXT,
 ) {
     init {
         require(id.isNotBlank()) { "Voice sample ID must not be blank" }
         require(durationMillis > 0) { "Voice sample duration must be positive" }
         require(createdAtEpochMillis >= 0) { "Creation time must not be negative" }
+        require(referenceText.isNotBlank()) { "Voice sample reference text must not be blank" }
     }
 }
 
+object VoiceSampleScript {
+    const val TEXT = "I communicate clearly, think carefully, and explain my experience with confidence."
+}
+
 enum class VoiceSampleFormat {
-    /** Internal capture format only; Voicebox compatibility is not yet confirmed. */
+    /** Voicebox v0.5.0 accepts the .m4a container produced by the Android recorder. */
     M4A_AAC,
 }
 

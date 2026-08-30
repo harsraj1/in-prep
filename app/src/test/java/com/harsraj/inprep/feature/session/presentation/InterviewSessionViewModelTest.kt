@@ -67,7 +67,7 @@ class InterviewSessionViewModelTest {
         advanceUntilIdle()
         assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
         assertEquals(
-            listOf(container.audioSynthesisRepository.audio.temporaryFile),
+            listOf(container.fakeAudioSynthesisRepository.audio.temporaryFile),
             container.fakeTemporaryFileCleaner.deletedFiles.takeLast(1),
         )
 
@@ -139,7 +139,7 @@ class InterviewSessionViewModelTest {
         assertAccepted(viewModel.dispatch(InterviewSessionAction.FinishRecording))
 
         assertTrue(viewModel.state.value is InterviewSessionUiState.VoiceSampleReady)
-        assertTrue(container.voiceCloningRepository.samples.isEmpty())
+        assertTrue(container.fakeVoiceCloningRepository.samples.isEmpty())
         assertAccepted(viewModel.dispatch(InterviewSessionAction.DiscardVoiceSample))
         advanceUntilIdle()
 
@@ -156,7 +156,7 @@ class InterviewSessionViewModelTest {
         val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
         val preferences = SessionPreferences(
             context,
-            container.voiceCloningRepository.profile,
+            container.fakeVoiceCloningRepository.profile,
         )
 
         assertAccepted(
@@ -190,7 +190,7 @@ class InterviewSessionViewModelTest {
     @Test
     fun `retry repeats failed cloning and reaches ready`() = runTest {
         val container = FakeApplicationContainer().apply {
-            voiceCloningRepository.failuresRemaining = 1
+            fakeVoiceCloningRepository.failuresRemaining = 1
         }
         val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
 
@@ -206,7 +206,7 @@ class InterviewSessionViewModelTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
-        assertEquals(2, container.voiceCloningRepository.samples.size)
+        assertEquals(2, container.fakeVoiceCloningRepository.samples.size)
         assertEquals(1, (container.settingsRepository as FakeSettingsRepository).saveCount)
     }
 
@@ -225,7 +225,7 @@ class InterviewSessionViewModelTest {
         assertEquals(FakePlaybackState.STOPPED, container.audioPlaybackRepository.playbackState)
         assertEquals(1, container.audioPlaybackRepository.stopCount)
         assertTrue(
-            container.audioSynthesisRepository.audio.temporaryFile in
+            container.fakeAudioSynthesisRepository.audio.temporaryFile in
                 container.fakeTemporaryFileCleaner.deletedFiles,
         )
     }

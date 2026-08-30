@@ -6,10 +6,11 @@
 - Package, application ID, and namespace: `com.harsraj.inprep`.
 - Kotlin with Gradle Kotlin DSL, Jetpack Compose, and Material 3.
 - Minimum SDK 26; compile and target SDK 36.
-- The manifest currently declares no permissions.
+- The manifest declares microphone and network permissions; cleartext remains
+  disabled outside the debug-only LAN override.
 - The application renders the complete Phase 2 setup/interview experience and
-  drives it exclusively through Phase 1 in-memory fakes. It still has no real
-  network, microphone, speech-recognition, AI, or audio-generation behavior.
+  uses real private-cache recording and the verified Voicebox adapter. Speech
+  recognition, Gemini, and playback remain fake.
 
 ## Intended layers
 
@@ -37,7 +38,7 @@ ownership justifies the added complexity.
 ```text
 com.harsraj.inprep
 ├── di/
-│   └── FakeApplicationContainer.kt       constructor wiring for Phase 1 fakes
+│   └── FakeApplicationContainer.kt       constructor-based application wiring
 └── feature/session/
     ├── domain/
     │   ├── model/InterviewModels.kt      immutable vendor-neutral models
@@ -50,6 +51,9 @@ com.harsraj.inprep
         ├── InterviewSessionAction.kt     accepted user intents and rejections
         ├── InterviewSessionUiState.kt    exhaustive UI state hierarchy
         └── InterviewSessionViewModel.kt  lifecycle-aware orchestration
+└── feature/voicebox/data/
+    ├── VoiceboxVoiceServices.kt          isolated v0.5.0 HTTP adapter
+    └── PrivateGeneratedAudioStore.kt     bounded private-cache WAV targets
 ```
 
 Domain code contains no Android, transport, endpoint, authentication, vendor,
@@ -214,9 +218,9 @@ stores voice samples, generated answers, generated audio, or credentials.
 DataStore is application-scoped, so these values survive Activity recreation
 and normal process restart. Reset clears the complete preference store.
 
-The application container still injects fake interview services, but injects
-the DataStore settings implementation in the running app. State-machine unit
-tests continue to inject the in-memory fake. On startup, the session ViewModel
+The application container injects DataStore, the Android recorder, and the
+Voicebox adapter while the remaining interview services stay fake. State-machine
+unit tests continue to inject in-memory fakes. On startup, the session ViewModel
 loads persisted metadata: a complete context/profile pair restores `Ready`; a
 context without a profile pre-fills `Setup`.
 
@@ -257,17 +261,28 @@ file IDs into paths. All paths are canonicalized beneath
 expiry delete them. Preferences never contain audio or generated answers.
 
 The internal format is mono AAC in an MPEG-4 `.m4a` container at 44.1 kHz and
-128 kbps, limited to 3–30 seconds. Voicebox compatibility is deliberately
-unclaimed because no confirmed contract exists. `VoiceSampleFormatConverter`
-marks the future conversion boundary, which must be implemented only after the
-deployed Voicebox documentation is recorded in `docs/voicebox-api.md`.
+128 kbps, limited to 3–30 seconds. Voicebox v0.5.0 source confirms `.m4a` support,
+so the adapter uploads it with its exact extension and `audio/mp4` media type.
+
+## Phase 5 Voicebox boundary
+
+`VoiceboxVoiceServices` is the sole owner of the verified HTTP contract and
+implements both vendor-neutral voice-cloning and audio-synthesis interfaces. It
+validates the configured base URL before every operation, creates a cloned
+profile with `chatterbox_turbo`, uploads the Phase 4 sample and exact script,
+starts asynchronous synthesis with the same engine, consumes the status SSE,
+and streams the completed WAV into `cacheDir/generated-audio`.
+
+Non-idempotent POST operations are never retried. Safe GET operations have at
+most two bounded retries for transport failures or HTTP 502/503/504. Cancellation
+closes the active call and best-effort cancels an identified generation. Audio
+is limited to 25 MiB and partial files are removed. Logs omit URLs, text, IDs,
+bodies, and media. `CompositeTemporaryFileCleaner` deletes both samples and
+generated audio on session cleanup, while cold start expires files older than
+24 hours. Exact evidence and schemas are in `docs/voicebox-api.md`.
 
 ## Decisions requiring verification
 
-- The exact deployed Voicebox version and its documented endpoints, fields,
-  authentication, media types, error schema, and response formats. No adapter
-  may be written until this contract is confirmed and recorded in
-  `docs/voicebox-api.md`.
 - The currently supported official Gemini Android/API integration, model ID,
   request schema, safety behavior, and structured-output support. These must be
   verified from official Google documentation immediately before integration.
@@ -280,7 +295,8 @@ deployed Voicebox documentation is recorded in `docs/voicebox-api.md`.
 ## Security and privacy decisions
 
 - No secrets, signing keys, recordings, or generated audio are tracked.
-- Phase 0 has no sensitive manifest permissions.
+- Microphone access starts only from an explicit visible user action; network
+  access is constrained by the debug/release transport policy.
 - Backups are disabled to reduce unintended replication of future sensitive
   local data; later phases must review Android backup/data-extraction rules in
   detail.

@@ -7,7 +7,7 @@ import com.harsraj.inprep.feature.session.domain.model.TemporaryFileReference
 import java.io.File
 import java.util.UUID
 
-class PrivateVoiceSampleStore(context: Context) : TemporaryFileCleaner {
+class PrivateVoiceSampleStore(context: Context) : TemporaryFileCleaner, VoiceSampleFileProvider {
     private val directory = File(context.cacheDir, DIRECTORY_NAME)
 
     fun create(): SampleFile {
@@ -26,6 +26,10 @@ class PrivateVoiceSampleStore(context: Context) : TemporaryFileCleaner {
 
     fun deleteNow(file: TemporaryFileReference) {
         fileFor(file.id).delete()
+    }
+
+    override fun requireFile(file: TemporaryFileReference): File = fileFor(file.id).also {
+        require(it.isFile) { "Voice sample is missing from private cache" }
     }
 
     fun deleteExpired(nowEpochMillis: Long, maxAgeMillis: Long = MAX_AGE_MILLIS) {
@@ -49,4 +53,8 @@ class PrivateVoiceSampleStore(context: Context) : TemporaryFileCleaner {
         const val DIRECTORY_NAME = "voice-samples"
         const val MAX_AGE_MILLIS = 24 * 60 * 60 * 1_000L
     }
+}
+
+fun interface VoiceSampleFileProvider {
+    fun requireFile(file: TemporaryFileReference): File
 }

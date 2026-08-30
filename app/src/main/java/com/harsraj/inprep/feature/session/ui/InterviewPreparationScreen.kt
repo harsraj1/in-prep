@@ -58,6 +58,7 @@ import com.harsraj.inprep.feature.session.domain.model.InterviewContext
 import com.harsraj.inprep.feature.session.domain.model.InterviewQuestion
 import com.harsraj.inprep.feature.session.domain.model.PlaybackContent
 import com.harsraj.inprep.feature.session.domain.model.SessionPreferences
+import com.harsraj.inprep.feature.session.domain.model.VoiceSampleScript
 import com.harsraj.inprep.feature.session.domain.model.TemporaryFileId
 import com.harsraj.inprep.feature.session.domain.model.TemporaryFileReference
 import com.harsraj.inprep.feature.session.domain.model.VoiceProfileId
@@ -328,7 +329,12 @@ private fun VoiceSampleCard(
     SectionCard(title = "2. Prepare your voice") {
         when (uiState) {
             is InterviewSessionUiState.Setup -> {
-                Text("Record a short, clear sample in a quiet place.")
+                Text("Record a short, clear sample in a quiet place. Read this sentence exactly:")
+                Text(
+                    "“${VoiceSampleScript.TEXT}”",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
                 reusablePreferences?.let { preferences ->
                     OutlinedButton(
                         onClick = {

@@ -16,6 +16,11 @@ val localGeminiApiKey = providers.gradleProperty("GEMINI_API_KEY")
 val escapedGeminiApiKey = localGeminiApiKey.get()
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
+val localVoiceboxBaseUrl = providers.gradleProperty("VOICEBOX_BASE_URL")
+    .orElse(providers.provider { localProperties.getProperty("VOICEBOX_BASE_URL", "") })
+val escapedVoiceboxBaseUrl = localVoiceboxBaseUrl.get()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 
 android {
     namespace = "com.harsraj.inprep"
@@ -36,9 +41,11 @@ android {
             // DEVELOPMENT ONLY: values in BuildConfig are extractable from the APK.
             // Production Gemini traffic must use a secret-preserving backend proxy.
             buildConfigField("String", "GEMINI_API_KEY", "\"$escapedGeminiApiKey\"")
+            buildConfigField("String", "VOICEBOX_BASE_URL", "\"$escapedVoiceboxBaseUrl\"")
         }
         release {
             buildConfigField("String", "GEMINI_API_KEY", "\"\"")
+            buildConfigField("String", "VOICEBOX_BASE_URL", "\"\"")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -76,6 +83,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
@@ -85,4 +93,6 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation("org.json:json:20250517")
 }
