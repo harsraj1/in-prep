@@ -22,6 +22,7 @@ import com.harsraj.inprep.feature.session.domain.model.TemporaryFileId
 import com.harsraj.inprep.feature.session.domain.model.TemporaryFileReference
 import com.harsraj.inprep.feature.session.domain.model.VoiceProfileId
 import com.harsraj.inprep.feature.session.domain.model.VoiceProfileReference
+import com.harsraj.inprep.feature.session.domain.model.VoiceSampleMetadata
 import com.harsraj.inprep.feature.session.presentation.ActionDispatchResult
 import com.harsraj.inprep.feature.session.presentation.FailedStage
 import com.harsraj.inprep.feature.session.presentation.InterviewSessionAction
@@ -56,6 +57,18 @@ class InterviewPreparationScreenTest {
     }
 
     @Test
+    fun setupCanStartTextOnlyWithoutRecording() {
+        val actions = mutableListOf<InterviewSessionAction>()
+        setScreen(InterviewSessionUiState.Setup(), actions)
+        composeRule.onNodeWithTag(SessionUiTags.COMPANY_FIELD).performTextInput("Sample Company")
+        composeRule.onNodeWithTag(SessionUiTags.ROLE_FIELD).performTextInput("Android Engineer")
+
+        composeRule.onNodeWithText("Continue with text answers").performScrollTo().performClick()
+
+        assertEquals(listOf(InterviewSessionAction.StartTextOnly(context)), actions)
+    }
+
+    @Test
     fun controlsAreRenderedOnlyForValidStates() {
         var state by mutableStateOf<InterviewSessionUiState>(readyState())
         composeRule.setContent {
@@ -74,6 +87,48 @@ class InterviewPreparationScreenTest {
 
         composeRule.onNodeWithText("Start").performScrollTo().assertIsEnabled()
         composeRule.onNodeWithText("Listen").assertDoesNotExist()
+    }
+
+    @Test
+    fun completeHappyPathExposesTheNextValidControl() {
+        val sample = VoiceSampleMetadata(
+            id = "synthetic-sample",
+            temporaryFile = TemporaryFileReference(TemporaryFileId("synthetic-sample-file")),
+            durationMillis = 5_000,
+            createdAtEpochMillis = 1,
+        )
+        var state by mutableStateOf<InterviewSessionUiState>(
+            InterviewSessionUiState.Recording(context),
+        )
+        composeRule.setContent {
+            InPrepTheme {
+                InterviewPreparationScreen(
+                    uiState = state,
+                    onAction = { ActionDispatchResult.Accepted },
+                )
+            }
+        }
+
+        fun show(next: InterviewSessionUiState, expectedControl: String) {
+            composeRule.runOnUiThread { state = next }
+            composeRule.onNodeWithText(expectedControl).performScrollTo().assertIsEnabled()
+        }
+
+        composeRule.onNodeWithText("Stop recording").performScrollTo().assertIsEnabled()
+        show(InterviewSessionUiState.VoiceSampleReady(context, sample), "Clone voice")
+        show(InterviewSessionUiState.Ready(context, profile), "Listen")
+        show(InterviewSessionUiState.Listening(context, profile), "Finish question")
+        show(
+            InterviewSessionUiState.QuestionReady(
+                context,
+                profile,
+                "How do you prevent duplicate work?",
+            ),
+            "Generate answer",
+        )
+        show(InterviewSessionUiState.ReadyToPlay(playbackContent()), "Start")
+        show(InterviewSessionUiState.Playing(playbackContent()), "Pause")
+        show(InterviewSessionUiState.Paused(playbackContent()), "Resume")
     }
 
     @Test
@@ -139,6 +194,47 @@ class InterviewPreparationScreenTest {
         composeRule.onNodeWithText("Retry").performScrollTo().performClick()
 
         assertEquals(listOf(InterviewSessionAction.Retry), actions)
+    }
+
+    @Test
+    fun synthesisFailureKeepsTheGeneratedAnswerVisibleForRetry() {
+        val actions = mutableListOf<InterviewSessionAction>()
+        val answer = GeneratedAnswer("A prepared answer that Gemini should not regenerate.")
+        setScreen(
+            InterviewSessionUiState.RecoverableError(
+                recoveryPoint = RecoveryPoint.AnswerReady(
+                    context,
+                    profile,
+                    InterviewQuestion("How do retries work?"),
+                    answer,
+                ),
+                failedStage = FailedStage.SYNTHESIZE_SPEECH,
+                message = "Voicebox could not prepare the audio. Check the trusted-LAN server and retry.",
+            ),
+            actions,
+        )
+
+        composeRule.onNodeWithText(answer.text).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Retry").performScrollTo().performClick()
+        assertEquals(listOf(InterviewSessionAction.Retry), actions)
+    }
+
+    @Test
+    fun cloningFailureOffersTextOnlyContinuation() {
+        val actions = mutableListOf<InterviewSessionAction>()
+        setScreen(
+            InterviewSessionUiState.RecoverableError(
+                recoveryPoint = RecoveryPoint.Setup(context),
+                failedStage = FailedStage.CLONE_VOICE,
+                message = "The voice profile could not be created.",
+            ),
+            actions,
+        )
+
+        composeRule.onNodeWithText("Continue with text answers")
+            .performScrollTo()
+            .performClick()
+        assertEquals(listOf(InterviewSessionAction.ContinueWithoutVoice), actions)
     }
 
     @Test

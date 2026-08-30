@@ -127,7 +127,7 @@ fun InterviewPreparationScreen(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            TargetCard(uiState, onStartRecording)
+                            TargetCard(uiState, onStartRecording, onAction)
                             VoiceSampleCard(uiState, reusablePreferences, onAction)
                         }
                         InterviewCard(
@@ -138,7 +138,7 @@ fun InterviewPreparationScreen(
                         )
                     }
                 } else {
-                    TargetCard(uiState, onStartRecording)
+                    TargetCard(uiState, onStartRecording, onAction)
                     VoiceSampleCard(uiState, reusablePreferences, onAction)
                     InterviewCard(uiState, onAction, onStartListening)
                 }
@@ -261,6 +261,7 @@ private fun SessionStatus(uiState: InterviewSessionUiState) {
 private fun TargetCard(
     uiState: InterviewSessionUiState,
     onStartRecording: (InterviewContext) -> Unit,
+    onAction: (InterviewSessionAction) -> ActionDispatchResult,
 ) {
     val setup = uiState as? InterviewSessionUiState.Setup
     if (setup == null) {
@@ -343,6 +344,22 @@ private fun TargetCard(
         Button(onClick = { record() }, modifier = Modifier.fillMaxWidth()) {
             Text("Record voice sample")
         }
+        OutlinedButton(
+            onClick = {
+                attempted = true
+                if (company.isNotBlank() && role.isNotBlank()) {
+                    focusManager.clearFocus()
+                    onAction(
+                        InterviewSessionAction.StartTextOnly(
+                            InterviewContext(company.trim(), role.trim()),
+                        ),
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text("Continue with text answers")
+        }
     }
 }
 
@@ -403,11 +420,33 @@ private fun VoiceSampleCard(
                     ErrorContent(uiState.message) {
                         onAction(InterviewSessionAction.Retry)
                     }
+                    if (uiState.failedStage == FailedStage.CLONE_VOICE) {
+                        OutlinedButton(
+                            onClick = { onAction(InterviewSessionAction.ContinueWithoutVoice) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text("Continue with text answers")
+                        }
+                    }
                 } else {
                     Text("Your voice profile remains ready.")
                 }
             }
             is InterviewSessionUiState.Closed -> Text("Session closed.")
+            is InterviewSessionUiState.Ready -> Text(
+                if (uiState.voiceProfile == null) {
+                    "Text-only session. Voicebox will not be called."
+                } else {
+                    "Voice profile ready for this practice session."
+                },
+            )
+            is InterviewSessionUiState.AnswerReady -> Text(
+                if (uiState.voiceProfile == null) {
+                    "Text-only session."
+                } else {
+                    "Voice profile ready for this practice session."
+                },
+            )
             else -> Text("Voice profile ready for this practice session.")
         }
     }
@@ -429,6 +468,17 @@ private fun InterviewCard(
 
         when (uiState) {
             is InterviewSessionUiState.Ready -> PrimaryAction("Listen", onStartListening)
+            is InterviewSessionUiState.AnswerReady -> {
+                Text(
+                    if (uiState.voiceProfile == null) {
+                        "Text answer ready. Voice playback is unavailable for this session."
+                    } else {
+                        "Text answer ready. You can continue with another question."
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                PrimaryAction("Next question", onStartListening)
+            }
             is InterviewSessionUiState.Listening -> {
                 if (uiState.partialTranscript.isNotBlank()) {
                     LabeledContent("Live transcript", uiState.partialTranscript)
@@ -587,6 +637,11 @@ private fun InterviewSessionUiState.statusText(): String = when (this) {
     is InterviewSessionUiState.Transcribing -> "Transcribing the question."
     is InterviewSessionUiState.QuestionReady -> "Question captured. Review it before generating."
     is InterviewSessionUiState.GeneratingAnswer -> "Generating a targeted answer."
+    is InterviewSessionUiState.AnswerReady -> if (voiceProfile == null) {
+        "Answer ready. Voice playback is unavailable."
+    } else {
+        "Answer ready."
+    }
     is InterviewSessionUiState.SynthesizingSpeech -> "Preparing spoken audio."
     is InterviewSessionUiState.ReadyToPlay -> "Answer ready to play."
     is InterviewSessionUiState.Playing -> "Playing the answer."
@@ -614,6 +669,7 @@ private fun InterviewSessionUiState.interviewContext(): InterviewContext? = when
     is InterviewSessionUiState.Transcribing -> context
     is InterviewSessionUiState.QuestionReady -> context
     is InterviewSessionUiState.GeneratingAnswer -> context
+    is InterviewSessionUiState.AnswerReady -> context
     is InterviewSessionUiState.SynthesizingSpeech -> context
     is InterviewSessionUiState.ReadyToPlay -> content.context
     is InterviewSessionUiState.Playing -> content.context
@@ -631,6 +687,7 @@ private fun InterviewSessionUiState.questionText(): String? = when (this) {
     is InterviewSessionUiState.Listening -> partialTranscript.takeIf(String::isNotBlank)
     is InterviewSessionUiState.QuestionReady -> transcript
     is InterviewSessionUiState.GeneratingAnswer -> question.text
+    is InterviewSessionUiState.AnswerReady -> question.text
     is InterviewSessionUiState.SynthesizingSpeech -> question.text
     is InterviewSessionUiState.ReadyToPlay -> content.question.text
     is InterviewSessionUiState.Playing -> content.question.text
@@ -644,6 +701,7 @@ private fun InterviewSessionUiState.questionText(): String? = when (this) {
 }
 
 private fun InterviewSessionUiState.answerText(): String? = when (this) {
+    is InterviewSessionUiState.AnswerReady -> answer.text
     is InterviewSessionUiState.SynthesizingSpeech -> answer.text
     is InterviewSessionUiState.ReadyToPlay -> content.answer.text
     is InterviewSessionUiState.Playing -> content.answer.text

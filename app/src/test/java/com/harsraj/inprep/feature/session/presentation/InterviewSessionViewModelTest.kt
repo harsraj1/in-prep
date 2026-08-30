@@ -305,6 +305,56 @@ class InterviewSessionViewModelTest {
     }
 
     @Test
+    fun `voicebox cloning failure can continue through a complete text answer`() = runTest {
+        val container = FakeApplicationContainer().apply {
+            fakeVoiceCloningRepository.failuresRemaining = 1
+        }
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+        viewModel.dispatch(InterviewSessionAction.StartRecording(context))
+        viewModel.dispatch(InterviewSessionAction.FinishRecording)
+        viewModel.dispatch(InterviewSessionAction.CloneVoice)
+        advanceUntilIdle()
+
+        assertEquals(
+            FailedStage.CLONE_VOICE,
+            (viewModel.state.value as InterviewSessionUiState.RecoverableError).failedStage,
+        )
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.ContinueWithoutVoice))
+        advanceUntilIdle()
+        val textReady = viewModel.state.value as InterviewSessionUiState.Ready
+        assertEquals(null, textReady.voiceProfile)
+        assertTrue(
+            container.fakeVoiceSampleRecorder.sample.temporaryFile in
+                container.fakeTemporaryFileCleaner.deletedFiles,
+        )
+
+        viewModel.dispatch(InterviewSessionAction.StartListening)
+        viewModel.dispatch(InterviewSessionAction.FinishListening)
+        advanceUntilIdle()
+        val transcript = (viewModel.state.value as InterviewSessionUiState.QuestionReady).transcript
+        viewModel.dispatch(InterviewSessionAction.GenerateFromTranscript(transcript))
+        advanceUntilIdle()
+
+        val answer = viewModel.state.value as InterviewSessionUiState.AnswerReady
+        assertTrue(answer.answer.text.contains(context.company))
+        assertTrue(container.fakeAudioSynthesisRepository.requests.isEmpty())
+        assertEquals(1, container.fakeAnswerGenerationRepository.requests.size)
+    }
+
+    @Test
+    fun `text only setup skips recording and cloning`() = runTest {
+        val container = FakeApplicationContainer()
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.StartTextOnly(context)))
+        advanceUntilIdle()
+
+        assertEquals(InterviewSessionUiState.Ready(context, null), viewModel.state.value)
+        assertEquals(0, container.fakeVoiceSampleRecorder.startCount)
+        assertTrue(container.fakeVoiceCloningRepository.samples.isEmpty())
+    }
+
+    @Test
     fun `microphone start denial can be retried without trapping setup`() = runTest {
         val container = FakeApplicationContainer().apply {
             fakeVoiceSampleRecorder.nextStartFailure = SecurityException("permission denied")

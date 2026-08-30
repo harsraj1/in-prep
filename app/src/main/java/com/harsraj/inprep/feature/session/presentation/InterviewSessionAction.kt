@@ -6,6 +6,8 @@ import com.harsraj.inprep.feature.session.domain.model.SessionPreferences
 sealed interface InterviewSessionAction {
     data class StartRecording(val context: InterviewContext) : InterviewSessionAction
 
+    data class StartTextOnly(val context: InterviewContext) : InterviewSessionAction
+
     data object FinishRecording : InterviewSessionAction
 
     data object CloneVoice : InterviewSessionAction
@@ -31,6 +33,8 @@ sealed interface InterviewSessionAction {
     data object Cancel : InterviewSessionAction
 
     data object Retry : InterviewSessionAction
+
+    data object ContinueWithoutVoice : InterviewSessionAction
 
     data object Stop : InterviewSessionAction
 

@@ -2,5 +2,7 @@
 <network-security-config>
     <!-- The OS exception is necessarily broad for dynamic LAN IPs. Application code
          must reject every non-private HTTP destination before making a request. -->
+    <!-- Debug-only dynamic private-LAN hosts are validated in application code. -->
+    <!--suppress InsecureBaseConfiguration -->
     <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

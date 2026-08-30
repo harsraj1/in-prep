@@ -352,6 +352,12 @@ setup → record/clone or profile reuse → listen/review → Gemini → Voicebo
 starts service work. Immediate state transitions reject rapid duplicate actions,
 and the activity-retained ViewModel prevents rotation from repeating requests.
 
+Voice is an optional capability, not a prerequisite for Gemini. Setup and cloning
+failure can enter `Ready` with no voice-profile reference. That path still performs
+recognition and Gemini generation, then stops at `AnswerReady` with visible text
+instead of calling synthesis. A failed synthesis likewise retains the generated
+answer so Voicebox recovery never requires another Gemini request.
+
 Each retry retains only the last safe input for its failed boundary. Gemini retry
 reuses the reviewed question without listening again. Synthesis retry reuses the
 generated answer without another Gemini request. Coroutine cancellation is rethrown

@@ -118,6 +118,13 @@ device, manually verify:
    release the microphone so voice-sample recording can subsequently start.
 5. Editing the transcript changes the question passed to answer generation.
 
+Voicebox is optional for text practice. **Continue with text answers** starts a
+session without recording or cloning, and the same option is offered if profile
+creation fails. Gemini still receives the reviewed question and the generated
+answer remains visible; synthesis/playback is simply skipped. If synthesis fails
+after Gemini succeeds, the answer remains on screen and can be reused without
+another Gemini request.
+
 ## Generated-answer playback
 
 Voicebox synthesis completes and streams a bounded WAV into
@@ -169,6 +176,37 @@ Then run `./gradlew connectedDebugAndroidTest` with an emulator or device.
 
 There is no separate formatter task in the Phase 0 baseline.
 
+For a release-candidate check, run from a clean working tree:
+
+```powershell
+.\gradlew.bat clean test lint assembleDebug assembleRelease
+```
+
+Release builds use R8 code shrinking and resource shrinking. The adapters use
+explicit `org.json` parsing rather than reflection-based model serialization;
+OkHttp and Media3 supply their own consumer rules. Investigate any future R8
+warning instead of adding a broad keep rule. Release builds contain no Gemini key,
+Voicebox development URL, or fake-service switch.
+
+## Troubleshooting
+
+- **Phone cannot reach Voicebox:** verify Voicebox listens on `0.0.0.0:17493`,
+  both devices use the same trusted non-guest Wi-Fi, AP/client isolation is off,
+  the saved URL uses the computer's current private address, and the inbound TCP
+  rule applies only to Windows Private profile.
+- **`127.0.0.1` works only on the computer:** localhost on a phone is the phone.
+  Use the computer's LAN address. Android Emulator uses `10.0.2.2` for host loopback.
+- **Voicebox reports healthy but generation fails:** load the documented
+  Chatterbox Turbo model, verify the v0.5.0 contract in `docs/voicebox-api.md`, and
+  inspect sanitized server logs without recording request bodies.
+- **Gemini is unavailable:** confirm the ignored debug key is configured and valid,
+  then check connectivity, quota, and safety response. Release intentionally has no
+  client key and requires a backend proxy.
+- **Speech recognition unavailable:** install/enable a recognition provider, grant
+  microphone access, and test outside airplane mode; offline support varies by device.
+- **Gradle daemon or SDK failure:** use JDK 17, install SDK 36/build-tools 36.x, stop
+  stale daemons if necessary, and rerun the documented verification command.
+
 ## Privacy warning
 
 Voice recordings and derived voice profiles are biometric and personal data.
@@ -187,4 +225,7 @@ saved target/profile preferences. Reset additionally clears those preferences.
 See [the architecture notes](docs/architecture.md) and the
 [verified Voicebox contract](docs/voicebox-api.md). The current Gemini model,
 wire contract, safety behavior, and credential boundary are documented in
-[the Gemini integration notes](docs/gemini-integration.md).
+[the Gemini integration notes](docs/gemini-integration.md). Release candidates must
+also review the [privacy overview](docs/privacy.md),
+[threat model](docs/threat-model.md), [release checklist](docs/release-checklist.md),
+and [manual test matrix](docs/manual-test-matrix.md).
