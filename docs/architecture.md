@@ -65,6 +65,25 @@ recognizers, players, and temporary files on stop and lifecycle teardown.
   be sent to the self-hosted deployment. TLS, authentication, authorization,
   retention, deletion, and tenant isolation must be verified.
 
+## Selected Voicebox network topology
+
+- The Android phone and the computer hosting Voicebox are connected to the same
+  trusted home LAN.
+- The Voicebox base URL is configurable and uses the host computer's private
+  LAN address, for example `http://192.168.1.50:17493/`. The example is not a
+  confirmed API contract or a hard-coded default.
+- Cleartext HTTP is permitted only in debug builds for this trusted-LAN
+  development topology. A later implementation must scope any Android
+  cleartext-network exception to debug configuration and the intended private
+  host; release builds must not broadly permit cleartext traffic.
+- Public HTTP addresses, public tunnels, router port forwarding, UPnP exposure,
+  and firewall rules allowing Public-profile access are prohibited.
+- The Voicebox host firewall may allow the chosen port only on the Private
+  network profile and only as narrowly as practical for the trusted LAN.
+- This topology does not make voice data non-sensitive. The app and service
+  must still minimize retention and protect voice samples, profiles, prompts,
+  and generated audio from other devices and users on the LAN.
+
 ## Decisions requiring verification
 
 - The exact deployed Voicebox version and its documented endpoints, fields,
