@@ -82,6 +82,9 @@ fun InterviewPreparationScreen(
     onAction: (InterviewSessionAction) -> ActionDispatchResult,
     modifier: Modifier = Modifier,
     reusablePreferences: SessionPreferences? = null,
+    onStartRecording: (InterviewContext) -> Unit = { context ->
+        onAction(InterviewSessionAction.StartRecording(context))
+    },
 ) {
     var showCloseConfirmation by rememberSaveable { mutableStateOf(false) }
     var showResetConfirmation by rememberSaveable { mutableStateOf(false) }
@@ -119,7 +122,7 @@ fun InterviewPreparationScreen(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
-                            TargetCard(uiState, onAction)
+                            TargetCard(uiState, onStartRecording)
                             VoiceSampleCard(uiState, reusablePreferences, onAction)
                         }
                         InterviewCard(
@@ -129,7 +132,7 @@ fun InterviewPreparationScreen(
                         )
                     }
                 } else {
-                    TargetCard(uiState, onAction)
+                    TargetCard(uiState, onStartRecording)
                     VoiceSampleCard(uiState, reusablePreferences, onAction)
                     InterviewCard(uiState, onAction)
                 }
@@ -230,7 +233,7 @@ private fun SessionStatus(uiState: InterviewSessionUiState) {
 @Composable
 private fun TargetCard(
     uiState: InterviewSessionUiState,
-    onAction: (InterviewSessionAction) -> ActionDispatchResult,
+    onStartRecording: (InterviewContext) -> Unit,
 ) {
     val setup = uiState as? InterviewSessionUiState.Setup
     if (setup == null) {
@@ -260,11 +263,7 @@ private fun TargetCard(
         attempted = true
         if (company.isNotBlank() && role.isNotBlank()) {
             focusManager.clearFocus()
-            onAction(
-                InterviewSessionAction.StartRecording(
-                    InterviewContext(company.trim(), role.trim()),
-                ),
-            )
+            onStartRecording(InterviewContext(company.trim(), role.trim()))
         }
     }
 
@@ -342,7 +341,8 @@ private fun VoiceSampleCard(
                 }
             }
             is InterviewSessionUiState.Recording -> {
-                Text("Recording… Speak naturally for several seconds.")
+                val elapsedSeconds = uiState.elapsedMillis / 1_000
+                Text("Recording… ${elapsedSeconds}s of 30s. Record at least 3 seconds.")
                 ActionRow {
                     Button(onClick = { onAction(InterviewSessionAction.FinishRecording) }) {
                         Text("Stop recording")

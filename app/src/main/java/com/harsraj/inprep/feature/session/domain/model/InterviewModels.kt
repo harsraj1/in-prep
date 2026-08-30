@@ -33,12 +33,18 @@ data class VoiceSampleMetadata(
     val temporaryFile: TemporaryFileReference,
     val durationMillis: Long,
     val createdAtEpochMillis: Long,
+    val format: VoiceSampleFormat = VoiceSampleFormat.M4A_AAC,
 ) {
     init {
         require(id.isNotBlank()) { "Voice sample ID must not be blank" }
         require(durationMillis > 0) { "Voice sample duration must be positive" }
         require(createdAtEpochMillis >= 0) { "Creation time must not be negative" }
     }
+}
+
+enum class VoiceSampleFormat {
+    /** Internal capture format only; Voicebox compatibility is not yet confirmed. */
+    M4A_AAC,
 }
 
 data class VoiceProfileReference(

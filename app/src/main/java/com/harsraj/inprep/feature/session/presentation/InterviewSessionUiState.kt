@@ -10,7 +10,10 @@ import com.harsraj.inprep.feature.session.domain.model.VoiceSampleMetadata
 sealed interface InterviewSessionUiState {
     data class Setup(val savedContext: InterviewContext? = null) : InterviewSessionUiState
 
-    data class Recording(val context: InterviewContext) : InterviewSessionUiState
+    data class Recording(
+        val context: InterviewContext,
+        val elapsedMillis: Long = 0,
+    ) : InterviewSessionUiState
 
     data class VoiceSampleReady(
         val context: InterviewContext,

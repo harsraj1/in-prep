@@ -237,6 +237,31 @@ The debug-only `BuildConfig.GEMINI_API_KEY` is loaded from ignored
 release. This does not make the debug key secret—APK contents are extractable—so
 production Gemini access remains behind a backend proxy trust boundary.
 
+## Phase 4 microphone and temporary recording boundary
+
+`MainActivity` owns the Android runtime permission launcher but not recorder
+logic. The visible Record action is the sole entry point. A pure permission
+policy selects start, rationale, request, retry, or system-settings recovery;
+denial never transitions the session into `Recording`.
+
+`AndroidVoiceSampleRecorder` implements the domain recorder contract with
+`MediaRecorder`. It publishes elapsed time, completion, and errors through a
+`StateFlow`; `InterviewSessionViewModel` maps those events into the existing
+explicit session state machine. Duplicate actions are rejected, recorder errors
+are recoverable, and `ON_STOP` cancels active capture. ViewModel teardown also
+cancels the recorder.
+
+`PrivateVoiceSampleStore` is the only component translating opaque temporary
+file IDs into paths. All paths are canonicalized beneath
+`cacheDir/voice-samples`; cancellation, discard, reset, failure, and 24-hour
+expiry delete them. Preferences never contain audio or generated answers.
+
+The internal format is mono AAC in an MPEG-4 `.m4a` container at 44.1 kHz and
+128 kbps, limited to 3–30 seconds. Voicebox compatibility is deliberately
+unclaimed because no confirmed contract exists. `VoiceSampleFormatConverter`
+marks the future conversion boundary, which must be implemented only after the
+deployed Voicebox documentation is recorded in `docs/voicebox-api.md`.
+
 ## Decisions requiring verification
 
 - The exact deployed Voicebox version and its documented endpoints, fields,

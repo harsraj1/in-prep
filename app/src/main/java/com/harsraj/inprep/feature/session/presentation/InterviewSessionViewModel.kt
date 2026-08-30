@@ -10,6 +10,7 @@ import com.harsraj.inprep.feature.session.domain.SpeechRecognitionRepository
 import com.harsraj.inprep.feature.session.domain.TemporaryFileCleaner
 import com.harsraj.inprep.feature.session.domain.VoiceCloningRepository
 import com.harsraj.inprep.feature.session.domain.VoiceSampleRecorder
+import com.harsraj.inprep.feature.session.domain.VoiceSampleRecorderStatus
 import com.harsraj.inprep.feature.session.domain.model.GeneratedAnswer
 import com.harsraj.inprep.feature.session.domain.model.InterviewContext
 import com.harsraj.inprep.feature.session.domain.model.InterviewQuestion
@@ -49,6 +50,33 @@ class InterviewSessionViewModel(
     private var retryOperation: RetryOperation? = null
 
     init {
+        viewModelScope.launch(dispatcher) {
+            voiceSampleRecorder.status.collect { recorderStatus ->
+                val current = mutableState.value
+                if (current is InterviewSessionUiState.Recording) {
+                    when (recorderStatus) {
+                        is VoiceSampleRecorderStatus.Recording -> {
+                            mutableState.value = current.copy(elapsedMillis = recorderStatus.elapsedMillis)
+                        }
+                        is VoiceSampleRecorderStatus.Captured -> {
+                            mutableState.value = InterviewSessionUiState.VoiceSampleReady(
+                                current.context,
+                                recorderStatus.sample,
+                            )
+                        }
+                        is VoiceSampleRecorderStatus.Failed -> {
+                            retryOperation = RetryOperation.StartRecording(current.context)
+                            showError(
+                                recoveryPoint = RecoveryPoint.Setup(current.context),
+                                failedStage = FailedStage.START_RECORDING,
+                                error = IllegalStateException(recorderStatus.message),
+                            )
+                        }
+                        VoiceSampleRecorderStatus.Idle -> Unit
+                    }
+                }
+            }
+        }
         if (initialPreferences == null) {
             viewModelScope.launch(dispatcher) {
                 val saved = settingsRepository.loadSettings()
@@ -64,6 +92,17 @@ class InterviewSessionViewModel(
                 }
             }
         }
+    }
+
+    fun onHostStopped() {
+        if (mutableState.value is InterviewSessionUiState.Recording) {
+            dispatch(InterviewSessionAction.Cancel)
+        }
+    }
+
+    override fun onCleared() {
+        voiceSampleRecorder.cancel()
+        super.onCleared()
     }
 
     fun dispatch(action: InterviewSessionAction): ActionDispatchResult {

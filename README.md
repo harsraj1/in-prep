@@ -1,9 +1,10 @@
 # In Prep
 
 In Prep is an Android interview-preparation app. The current build provides the
-accessible Jetpack Compose experience, persistent non-secret preferences, and
-in-memory service fakes. Voice capture, speech recognition, Gemini requests, and
-Voicebox requests are intentionally not integrated yet.
+accessible Jetpack Compose experience, persistent non-secret preferences,
+lifecycle-safe local voice-sample capture, and in-memory network-service fakes.
+Speech recognition, Gemini requests, and Voicebox requests are intentionally not
+integrated yet.
 
 ## Prerequisites
 
@@ -56,6 +57,34 @@ Android Network Security Configuration cannot allow cleartext for an arbitrary
 runtime-selected IP with a narrow host rule. Consequently, the debug manifest
 has a broad OS-level cleartext exception and application-level URL validation
 is the mandatory boundary. The main/release manifest rejects cleartext.
+
+## Voice sample recording
+
+Recording starts only after the user presses **Record voice sample** and grants
+microphone permission. A rationale is shown when Android recommends one; denied
+permission can be retried, and permanent denial provides a route to system app
+settings. Leaving the app while recording cancels the capture.
+
+Samples must be 3–30 seconds. They are captured as mono AAC audio in an MPEG-4
+`.m4a` container (44.1 kHz, 128 kbps) under the app-private
+`cacheDir/voice-samples` directory. Discard, reset, recording failure, and cache
+expiry remove temporary files. Raw recordings and generated answers are never
+stored in preferences or logs.
+
+This is an internal recording format, **not a claim of Voicebox compatibility**.
+The deployed Voicebox media contract is still unconfirmed, so any required
+conversion remains isolated behind `VoiceSampleFormatConverter`.
+
+Physical-device manual checks:
+
+1. Remove microphone permission, press Record, and verify denial leaves the app
+   usable; deny permanently and verify **Open settings** works.
+2. Grant permission, record for less than 3 seconds, and verify a recoverable
+   error appears without retaining the sample.
+3. Record for 3–30 seconds and verify elapsed time, Stop, and Discard.
+4. Start recording and background, rotate, or interrupt the app; verify capture
+   stops and setup is restored.
+5. Rapidly tap controls and verify only one recorder starts.
 
 ## Build and verify
 

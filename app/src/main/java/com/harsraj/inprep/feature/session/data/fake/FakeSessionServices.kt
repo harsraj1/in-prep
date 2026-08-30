@@ -8,6 +8,7 @@ import com.harsraj.inprep.feature.session.domain.SpeechRecognitionRepository
 import com.harsraj.inprep.feature.session.domain.TemporaryFileCleaner
 import com.harsraj.inprep.feature.session.domain.VoiceCloningRepository
 import com.harsraj.inprep.feature.session.domain.VoiceSampleRecorder
+import com.harsraj.inprep.feature.session.domain.VoiceSampleRecorderStatus
 import com.harsraj.inprep.feature.session.domain.model.GeneratedAnswer
 import com.harsraj.inprep.feature.session.domain.model.GeneratedAudioReference
 import com.harsraj.inprep.feature.session.domain.model.InterviewContext
@@ -31,6 +32,8 @@ class FakeVoiceSampleRecorder(
         createdAtEpochMillis = 1,
     ),
 ) : VoiceSampleRecorder {
+    private val mutableStatus = MutableStateFlow<VoiceSampleRecorderStatus>(VoiceSampleRecorderStatus.Idle)
+    override val status: StateFlow<VoiceSampleRecorderStatus> = mutableStatus
     var isRecording = false
         private set
     var startCount = 0
@@ -42,6 +45,16 @@ class FakeVoiceSampleRecorder(
     var nextStartFailure: Exception? = null
     var nextFinishFailure: Exception? = null
 
+    fun emitElapsed(elapsedMillis: Long) {
+        check(isRecording)
+        mutableStatus.value = VoiceSampleRecorderStatus.Recording(elapsedMillis)
+    }
+
+    fun fail(message: String) {
+        isRecording = false
+        mutableStatus.value = VoiceSampleRecorderStatus.Failed(message)
+    }
+
     override fun start() {
         nextStartFailure?.let {
             nextStartFailure = null
@@ -50,6 +63,7 @@ class FakeVoiceSampleRecorder(
         check(!isRecording) { "Fake recorder is already recording" }
         startCount += 1
         isRecording = true
+        mutableStatus.value = VoiceSampleRecorderStatus.Recording(0)
     }
 
     override fun finish(): VoiceSampleMetadata {
@@ -60,12 +74,14 @@ class FakeVoiceSampleRecorder(
         check(isRecording) { "Fake recorder is not recording" }
         finishCount += 1
         isRecording = false
+        mutableStatus.value = VoiceSampleRecorderStatus.Captured(sample)
         return sample
     }
 
     override fun cancel() {
         cancelCount += 1
         isRecording = false
+        mutableStatus.value = VoiceSampleRecorderStatus.Idle
     }
 }
 

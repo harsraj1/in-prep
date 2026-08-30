@@ -10,13 +10,30 @@ import com.harsraj.inprep.feature.session.domain.model.VoiceProfileReference
 import com.harsraj.inprep.feature.session.domain.model.VoiceSampleMetadata
 import com.harsraj.inprep.feature.settings.domain.AppSettings
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
+
+sealed interface VoiceSampleRecorderStatus {
+    data object Idle : VoiceSampleRecorderStatus
+    data class Recording(val elapsedMillis: Long) : VoiceSampleRecorderStatus
+    data class Captured(val sample: VoiceSampleMetadata) : VoiceSampleRecorderStatus
+    data class Failed(val message: String) : VoiceSampleRecorderStatus
+}
 
 interface VoiceSampleRecorder {
+    val status: StateFlow<VoiceSampleRecorderStatus>
+
     fun start()
 
     fun finish(): VoiceSampleMetadata
 
     fun cancel()
+}
+
+interface VoiceSampleFormatConverter {
+    suspend fun convert(
+        sample: VoiceSampleMetadata,
+        requiredFormat: String,
+    ): VoiceSampleMetadata
 }
 
 interface VoiceCloningRepository {

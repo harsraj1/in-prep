@@ -68,7 +68,7 @@ class InterviewSessionViewModelTest {
         assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
         assertEquals(
             listOf(container.audioSynthesisRepository.audio.temporaryFile),
-            container.temporaryFileCleaner.deletedFiles.takeLast(1),
+            container.fakeTemporaryFileCleaner.deletedFiles.takeLast(1),
         )
 
         val stateTypes = observedStates.map { it::class }
@@ -96,8 +96,38 @@ class InterviewSessionViewModelTest {
         val duplicate = viewModel.dispatch(InterviewSessionAction.StartRecording(context))
 
         assertTrue(duplicate is ActionDispatchResult.Rejected)
-        assertEquals(1, container.voiceSampleRecorder.startCount)
+        assertEquals(1, container.fakeVoiceSampleRecorder.startCount)
         assertTrue(viewModel.state.value is InterviewSessionUiState.Recording)
+    }
+
+    @Test
+    fun `recorder elapsed time and errors update explicit UI state`() = runTest {
+        val container = FakeApplicationContainer()
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.StartRecording(context)))
+        container.fakeVoiceSampleRecorder.emitElapsed(4_200)
+        advanceUntilIdle()
+        assertEquals(4_200, (viewModel.state.value as InterviewSessionUiState.Recording).elapsedMillis)
+
+        container.fakeVoiceSampleRecorder.fail("Microphone unavailable")
+        advanceUntilIdle()
+
+        val error = viewModel.state.value as InterviewSessionUiState.RecoverableError
+        assertEquals(FailedStage.START_RECORDING, error.failedStage)
+        assertEquals("Microphone unavailable", error.message)
+    }
+
+    @Test
+    fun `host stop cancels active recording and returns to setup`() = runTest {
+        val container = FakeApplicationContainer()
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+        viewModel.dispatch(InterviewSessionAction.StartRecording(context))
+
+        viewModel.onHostStopped()
+
+        assertEquals(InterviewSessionUiState.Setup(context), viewModel.state.value)
+        assertFalse(container.fakeVoiceSampleRecorder.isRecording)
     }
 
     @Test
@@ -115,8 +145,8 @@ class InterviewSessionViewModelTest {
 
         assertEquals(InterviewSessionUiState.Setup(context), viewModel.state.value)
         assertTrue(
-            container.voiceSampleRecorder.sample.temporaryFile in
-                container.temporaryFileCleaner.deletedFiles,
+            container.fakeVoiceSampleRecorder.sample.temporaryFile in
+                container.fakeTemporaryFileCleaner.deletedFiles,
         )
     }
 
@@ -146,8 +176,8 @@ class InterviewSessionViewModelTest {
 
         viewModel.dispatch(InterviewSessionAction.StartRecording(context))
         assertAccepted(viewModel.dispatch(InterviewSessionAction.Cancel))
-        assertFalse(container.voiceSampleRecorder.isRecording)
-        assertEquals(1, container.voiceSampleRecorder.cancelCount)
+        assertFalse(container.fakeVoiceSampleRecorder.isRecording)
+        assertEquals(1, container.fakeVoiceSampleRecorder.cancelCount)
         assertEquals(InterviewSessionUiState.Setup(context), viewModel.state.value)
 
         createReadySession(viewModel)
@@ -196,7 +226,7 @@ class InterviewSessionViewModelTest {
         assertEquals(1, container.audioPlaybackRepository.stopCount)
         assertTrue(
             container.audioSynthesisRepository.audio.temporaryFile in
-                container.temporaryFileCleaner.deletedFiles,
+                container.fakeTemporaryFileCleaner.deletedFiles,
         )
     }
 
@@ -221,7 +251,7 @@ class InterviewSessionViewModelTest {
         val settings = container.settingsRepository as FakeSettingsRepository
         assertEquals(null, settings.preferences)
         assertEquals(1, settings.clearCount)
-        assertEquals(2, container.temporaryFileCleaner.deleteAllCount)
+        assertEquals(2, container.fakeTemporaryFileCleaner.deleteAllCount)
     }
 
     private suspend fun kotlinx.coroutines.test.TestScope.createReadySession(
