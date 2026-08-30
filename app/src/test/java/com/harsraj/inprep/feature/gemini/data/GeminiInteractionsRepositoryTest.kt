@@ -53,8 +53,16 @@ class GeminiInteractionsRepositoryTest {
         assertEquals(hostileCompany, JSONObject(untrustedJson).getString("company"))
         assertFalse(body.getString("system_instruction").contains("ignore safeguards"))
         assertEquals("application/json", body.getJSONObject("response_format").getString("mime_type"))
+        assertFalse(body.getJSONObject("response_format").getJSONObject("schema").has("additionalProperties"))
         assertEquals(512, body.getJSONObject("generation_config").getInt("max_output_tokens"))
         assertFalse(rawBody.contains("test-key-placeholder"))
+    }
+
+    @Test fun `default endpoint follows official v1beta interactions quickstart`() {
+        assertEquals(
+            "https://generativelanguage.googleapis.com/v1beta/interactions",
+            GeminiInteractionsRepository.DEFAULT_ENDPOINT.toString(),
+        )
     }
 
     @Test fun `structured response returns clean spoken answer`() = runBlocking {
@@ -69,6 +77,18 @@ class GeminiInteractionsRepositoryTest {
             "I would first clarify the requirements.",
             repository().generateAnswer(context(), question()).text,
         )
+    }
+
+    @Test fun `server 500 from structured output retries once without response format`() = runBlocking {
+        server.enqueue(json(JSONObject()).setResponseCode(500))
+        server.enqueue(json(interaction("I would isolate the failing component first.")))
+
+        val answer = repository().generateAnswer(context(), question())
+
+        assertEquals("I would isolate the failing component first.", answer.text)
+        assertTrue(JSONObject(server.takeRequest().body.readUtf8()).has("response_format"))
+        assertFalse(JSONObject(server.takeRequest().body.readUtf8()).has("response_format"))
+        assertEquals(2, server.requestCount)
     }
 
     @Test fun `empty output is rejected`() {

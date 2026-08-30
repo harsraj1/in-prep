@@ -4,8 +4,8 @@ Verified against official Google AI for Developers documentation on 2026-08-30.
 
 ## Selected API and model
 
-- API: stable Gemini REST `v1` Interactions API,
-  `POST https://generativelanguage.googleapis.com/v1/interactions`.
+- API: Gemini REST Interactions API at the current official quickstart endpoint,
+  `POST https://generativelanguage.googleapis.com/v1beta/interactions`.
 - Authentication: `x-goog-api-key` request header.
 - Model: stable `gemini-3.7-flash` (released August 2026).
 - Published model limits: 1,048,576 input tokens and 65,536 output tokens.
@@ -13,9 +13,12 @@ Verified against official Google AI for Developers documentation on 2026-08-30.
   characters, `max_output_tokens` 512, and parsed spoken answer 3,000 characters.
 - Request storage: `store: false`.
 
-Google describes `v1` as the stable API version and the Interactions API as the
-recommended standard primitive. `gemini-3.7-flash` is the latest stable Flash
-model and supports structured output. REST keeps the Android adapter small,
+Google describes the Interactions API as the recommended standard primitive and
+currently publishes its REST quickstarts using `v1beta/interactions`. A live
+`v1/interactions` request returned HTTP 500 in the development deployment, so the
+adapter follows the documented quickstart path rather than assuming wire-version
+parity. `gemini-3.7-flash` is the latest stable Flash model and supports structured
+output. REST keeps the Android adapter small,
 avoids coupling the app to a rapidly changing SDK, and makes the exact wire
 contract testable with a local mock server.
 
@@ -57,9 +60,16 @@ fields. The system instruction requires the model to:
     }
   },
   "required": ["spokenAnswer"],
-  "additionalProperties": false
 }
 ```
+
+Only the documented Gemini JSON Schema subset is sent. In particular, the
+adapter does not send `additionalProperties`, which is not listed in that
+subset. If the Interactions endpoint nevertheless returns HTTP 500 for the
+structured-output request, the adapter makes one bounded compatibility retry
+without `response_format`; the existing bounded plain-text parser is used for
+that response. Both requests set `store: false`, and no prompt or response body
+is logged.
 
 Answer style is an injected `AnswerStyle` (`CONCISE`, `BALANCED`, or `DETAILED`);
 the application currently selects `BALANCED`. It can be exposed as a persisted UI

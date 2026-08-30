@@ -38,17 +38,31 @@ class GeminiInteractionsRepository(
         if (apiKey.isEmpty()) {
             throw GeminiException(GeminiFailure.MISSING_CREDENTIAL, "Configure the local Gemini API key first")
         }
-        val requestBody = GeminiPromptBuilder.buildRequest(context, question, answerStyle)
-        val request = Request.Builder()
+        fun request(structuredOutput: Boolean) = Request.Builder()
             .url(endpoint)
             .header("x-goog-api-key", apiKey)
-            .post(requestBody.toString().toRequestBody(JSON))
+            .post(
+                GeminiPromptBuilder.buildRequest(context, question, answerStyle, structuredOutput)
+                    .toString()
+                    .toRequestBody(JSON),
+            )
             .build()
         return try {
-            execute(request).use { response ->
-                debugLog("Gemini POST /v1/interactions -> ${response.code}")
-                if (!response.isSuccessful) throw mapHttpError(response)
-                parseResponse(response.body?.string())
+            execute(request(structuredOutput = true)).use { structuredResponse ->
+                debugLog("Gemini POST /v1beta/interactions structured -> ${structuredResponse.code}")
+                if (structuredResponse.code != 500) {
+                    if (!structuredResponse.isSuccessful) throw mapHttpError(structuredResponse)
+                    return@use parseResponse(structuredResponse.body?.string())
+                }
+
+                // Some Gemini deployments return HTTP 500 for response_format even when the
+                // same model accepts the prompt. Retry once without that optional feature.
+                // store=false prevents either interaction from being retained by the API.
+                execute(request(structuredOutput = false)).use { fallbackResponse ->
+                    debugLog("Gemini POST /v1beta/interactions text fallback -> ${fallbackResponse.code}")
+                    if (!fallbackResponse.isSuccessful) throw mapHttpError(fallbackResponse)
+                    parseResponse(fallbackResponse.body?.string())
+                }
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -166,7 +180,8 @@ class GeminiInteractionsRepository(
     companion object {
         const val MODEL = "gemini-3.7-flash"
         const val MAX_ANSWER_CHARS = 3_000
-        val DEFAULT_ENDPOINT: HttpUrl = "https://generativelanguage.googleapis.com/v1/interactions".toHttpUrl()
+        val DEFAULT_ENDPOINT: HttpUrl =
+            "https://generativelanguage.googleapis.com/v1beta/interactions".toHttpUrl()
         private val JSON = "application/json; charset=utf-8".toMediaType()
     }
 }
@@ -206,6 +221,7 @@ internal object GeminiPromptBuilder {
         context: InterviewContext,
         question: InterviewQuestion,
         style: AnswerStyle,
+        structuredOutput: Boolean = true,
     ): JSONObject {
         require(context.company.length <= MAX_COMPANY_CHARS) { "Company name is too long" }
         require(context.role.length <= MAX_ROLE_CHARS) { "Target role is too long" }
@@ -227,8 +243,7 @@ internal object GeminiPromptBuilder {
                 ),
             )
             .put("required", JSONArray().put("spokenAnswer"))
-            .put("additionalProperties", false)
-        return JSONObject()
+        val request = JSONObject()
             .put("model", GeminiInteractionsRepository.MODEL)
             .put("store", false)
             .put(
@@ -240,13 +255,16 @@ internal object GeminiPromptBuilder {
                     "Return clean speech without XML, bracketed stage directions, emotion tags, or paralinguistic tokens.",
             )
             .put("input", "UNTRUSTED_INTERVIEW_DATA_JSON:\n${untrustedData}")
-            .put(
+            .put("generation_config", JSONObject().put("max_output_tokens", 512))
+        if (structuredOutput) {
+            request.put(
                 "response_format",
                 JSONObject()
                     .put("type", "text")
                     .put("mime_type", "application/json")
                     .put("schema", schema),
             )
-            .put("generation_config", JSONObject().put("max_output_tokens", 512))
+        }
+        return request
     }
 }
