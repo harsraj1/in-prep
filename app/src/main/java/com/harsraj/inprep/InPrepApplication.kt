@@ -8,6 +8,7 @@ import com.harsraj.inprep.feature.settings.domain.VoiceboxBaseUrlValidator
 import com.harsraj.inprep.feature.session.data.recording.AndroidVoiceSampleRecorder
 import com.harsraj.inprep.feature.session.data.recording.CompositeTemporaryFileCleaner
 import com.harsraj.inprep.feature.session.data.recording.PrivateVoiceSampleStore
+import com.harsraj.inprep.feature.session.data.speech.AndroidSpeechRecognitionRepository
 import com.harsraj.inprep.feature.voicebox.data.PrivateGeneratedAudioStore
 import com.harsraj.inprep.feature.voicebox.data.VoiceboxVoiceServices
 import java.util.concurrent.TimeUnit
@@ -54,6 +55,7 @@ class InPrepApplication : Application() {
             temporaryFileCleaner = CompositeTemporaryFileCleaner(sampleStore, generatedAudioStore),
             voiceCloningRepository = voicebox,
             audioSynthesisRepository = voicebox,
+            speechRecognitionRepository = AndroidSpeechRecognitionRepository(this),
         )
     }
 }

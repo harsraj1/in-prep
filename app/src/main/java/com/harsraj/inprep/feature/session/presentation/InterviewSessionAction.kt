@@ -18,6 +18,8 @@ sealed interface InterviewSessionAction {
 
     data object FinishListening : InterviewSessionAction
 
+    data class GenerateFromTranscript(val transcript: String) : InterviewSessionAction
+
     data object Play : InterviewSessionAction
 
     data object Pause : InterviewSessionAction

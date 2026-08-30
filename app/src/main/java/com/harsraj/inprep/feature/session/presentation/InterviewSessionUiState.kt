@@ -33,11 +33,18 @@ sealed interface InterviewSessionUiState {
     data class Listening(
         val context: InterviewContext,
         val voiceProfile: VoiceProfileReference,
+        val partialTranscript: String = "",
     ) : InterviewSessionUiState
 
     data class Transcribing(
         val context: InterviewContext,
         val voiceProfile: VoiceProfileReference,
+    ) : InterviewSessionUiState
+
+    data class QuestionReady(
+        val context: InterviewContext,
+        val voiceProfile: VoiceProfileReference,
+        val transcript: String,
     ) : InterviewSessionUiState
 
     data class GeneratingAnswer(

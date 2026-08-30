@@ -48,11 +48,22 @@ interface AnswerGenerationRepository {
 }
 
 interface SpeechRecognitionRepository {
+    val status: StateFlow<SpeechRecognitionStatus>
+
     fun startListening()
 
     suspend fun stopAndTranscribe(): InterviewQuestion
 
     fun cancel()
+
+    fun destroy()
+}
+
+sealed interface SpeechRecognitionStatus {
+    data object Idle : SpeechRecognitionStatus
+    data class Listening(val partialTranscript: String = "") : SpeechRecognitionStatus
+    data class Final(val question: InterviewQuestion) : SpeechRecognitionStatus
+    data class Failed(val message: String) : SpeechRecognitionStatus
 }
 
 interface AudioSynthesisRepository {

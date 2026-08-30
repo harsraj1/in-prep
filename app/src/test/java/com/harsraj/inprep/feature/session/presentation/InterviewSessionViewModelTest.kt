@@ -47,6 +47,11 @@ class InterviewSessionViewModelTest {
         assertAccepted(viewModel.dispatch(InterviewSessionAction.FinishListening))
         assertTrue(viewModel.state.value is InterviewSessionUiState.Transcribing)
         advanceUntilIdle()
+        val questionReady = viewModel.state.value as InterviewSessionUiState.QuestionReady
+        assertAccepted(
+            viewModel.dispatch(InterviewSessionAction.GenerateFromTranscript(questionReady.transcript)),
+        )
+        advanceUntilIdle()
         assertTrue(viewModel.state.value is InterviewSessionUiState.ReadyToPlay)
 
         assertAccepted(viewModel.dispatch(InterviewSessionAction.Play))
@@ -79,6 +84,7 @@ class InterviewSessionViewModelTest {
         assertTrue(InterviewSessionUiState.Ready::class in stateTypes)
         assertTrue(InterviewSessionUiState.Listening::class in stateTypes)
         assertTrue(InterviewSessionUiState.Transcribing::class in stateTypes)
+        assertTrue(InterviewSessionUiState.QuestionReady::class in stateTypes)
         assertTrue(InterviewSessionUiState.GeneratingAnswer::class in stateTypes)
         assertTrue(InterviewSessionUiState.SynthesizingSpeech::class in stateTypes)
         assertTrue(InterviewSessionUiState.ReadyToPlay::class in stateTypes)
@@ -98,6 +104,55 @@ class InterviewSessionViewModelTest {
         assertTrue(duplicate is ActionDispatchResult.Rejected)
         assertEquals(1, container.fakeVoiceSampleRecorder.startCount)
         assertTrue(viewModel.state.value is InterviewSessionUiState.Recording)
+    }
+
+    @Test
+    fun `partial and final recognition require transcript review before generation`() = runTest {
+        val container = FakeApplicationContainer()
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+        createReadySession(viewModel)
+
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.StartListening))
+        container.fakeSpeechRecognitionRepository.emitPartial("How do you")
+        advanceUntilIdle()
+        assertEquals(
+            "How do you",
+            (viewModel.state.value as InterviewSessionUiState.Listening).partialTranscript,
+        )
+
+        container.fakeSpeechRecognitionRepository.emitFinal("How do you diagnose ANRs?")
+        advanceUntilIdle()
+        val review = viewModel.state.value as InterviewSessionUiState.QuestionReady
+        assertEquals("How do you diagnose ANRs?", review.transcript)
+        assertTrue(container.answerGenerationRepository.requests.isEmpty())
+
+        assertAccepted(
+            viewModel.dispatch(InterviewSessionAction.GenerateFromTranscript("How do you prevent ANRs?")),
+        )
+        advanceUntilIdle()
+        assertEquals(
+            "How do you prevent ANRs?",
+            container.answerGenerationRepository.requests.single().second.text,
+        )
+    }
+
+    @Test
+    fun `recognition failure and host stop return to usable ready state`() = runTest {
+        val container = FakeApplicationContainer()
+        val viewModel = container.createInterviewSessionViewModel(StandardTestDispatcher(testScheduler))
+        createReadySession(viewModel)
+
+        viewModel.dispatch(InterviewSessionAction.StartListening)
+        container.fakeSpeechRecognitionRepository.fail("No speech was heard")
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value is InterviewSessionUiState.RecoverableError)
+        assertAccepted(viewModel.dispatch(InterviewSessionAction.Cancel))
+        assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
+
+        viewModel.dispatch(InterviewSessionAction.StartListening)
+        viewModel.onHostStopped()
+        assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
+        assertFalse(container.fakeSpeechRecognitionRepository.isListening)
     }
 
     @Test
@@ -183,7 +238,7 @@ class InterviewSessionViewModelTest {
         createReadySession(viewModel)
         viewModel.dispatch(InterviewSessionAction.StartListening)
         assertAccepted(viewModel.dispatch(InterviewSessionAction.Cancel))
-        assertFalse(container.speechRecognitionRepository.isListening)
+        assertFalse(container.fakeSpeechRecognitionRepository.isListening)
         assertTrue(viewModel.state.value is InterviewSessionUiState.Ready)
     }
 
@@ -270,6 +325,9 @@ class InterviewSessionViewModelTest {
         createReadySession(viewModel)
         viewModel.dispatch(InterviewSessionAction.StartListening)
         viewModel.dispatch(InterviewSessionAction.FinishListening)
+        advanceUntilIdle()
+        val questionReady = viewModel.state.value as InterviewSessionUiState.QuestionReady
+        viewModel.dispatch(InterviewSessionAction.GenerateFromTranscript(questionReady.transcript))
         advanceUntilIdle()
         assertTrue(viewModel.state.value is InterviewSessionUiState.ReadyToPlay)
     }

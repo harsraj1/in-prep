@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextClearance
 import com.harsraj.inprep.feature.session.domain.model.GeneratedAnswer
 import com.harsraj.inprep.feature.session.domain.model.GeneratedAudioReference
 import com.harsraj.inprep.feature.session.domain.model.InterviewContext
@@ -96,6 +97,30 @@ class InterviewPreparationScreenTest {
 
         composeRule.onNodeWithText("Resume").performScrollTo().assertIsEnabled()
         composeRule.onNodeWithText("Pause").assertDoesNotExist()
+    }
+
+    @Test
+    fun transcriptCanBeReviewedAndEditedBeforeGeneration() {
+        val actions = mutableListOf<InterviewSessionAction>()
+        setScreen(
+            InterviewSessionUiState.QuestionReady(
+                context,
+                profile,
+                "How do you investigate crashes?",
+            ),
+            actions,
+        )
+
+        val transcriptField = composeRule.onNodeWithTag(SessionUiTags.TRANSCRIPT_FIELD)
+        transcriptField.performScrollTo()
+        transcriptField.performTextClearance()
+        transcriptField.performTextInput("How do you investigate ANRs?")
+        composeRule.onNodeWithText("Generate answer").performScrollTo().performClick()
+
+        assertEquals(
+            InterviewSessionAction.GenerateFromTranscript("How do you investigate ANRs?"),
+            actions.single(),
+        )
     }
 
     @Test

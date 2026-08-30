@@ -75,6 +75,7 @@ object SessionUiTags {
     const val ROLE_FIELD = "role_field"
     const val STATUS = "session_status"
     const val PRIMARY_INTERVIEW_ACTION = "primary_interview_action"
+    const val TRANSCRIPT_FIELD = "transcript_field"
 }
 
 @Composable
@@ -86,6 +87,7 @@ fun InterviewPreparationScreen(
     onStartRecording: (InterviewContext) -> Unit = { context ->
         onAction(InterviewSessionAction.StartRecording(context))
     },
+    onStartListening: () -> Unit = { onAction(InterviewSessionAction.StartListening) },
 ) {
     var showCloseConfirmation by rememberSaveable { mutableStateOf(false) }
     var showResetConfirmation by rememberSaveable { mutableStateOf(false) }
@@ -129,13 +131,14 @@ fun InterviewPreparationScreen(
                         InterviewCard(
                             uiState = uiState,
                             onAction = onAction,
+                            onStartListening = onStartListening,
                             modifier = Modifier.weight(1.2f),
                         )
                     }
                 } else {
                     TargetCard(uiState, onStartRecording)
                     VoiceSampleCard(uiState, reusablePreferences, onAction)
-                    InterviewCard(uiState, onAction)
+                    InterviewCard(uiState, onAction, onStartListening)
                 }
                 Spacer(Modifier.height(8.dp))
             }
@@ -391,6 +394,7 @@ private fun VoiceSampleCard(
 private fun InterviewCard(
     uiState: InterviewSessionUiState,
     onAction: (InterviewSessionAction) -> ActionDispatchResult,
+    onStartListening: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     SectionCard(title = "3. Practice the interview", modifier = modifier) {
@@ -401,12 +405,29 @@ private fun InterviewCard(
         LabeledContent("Generated answer", answer ?: "Your practice answer will appear here.")
 
         when (uiState) {
-            is InterviewSessionUiState.Ready -> PrimaryAction("Listen") {
-                onAction(InterviewSessionAction.StartListening)
-            }
+            is InterviewSessionUiState.Ready -> PrimaryAction("Listen", onStartListening)
             is InterviewSessionUiState.Listening -> {
+                if (uiState.partialTranscript.isNotBlank()) {
+                    LabeledContent("Live transcript", uiState.partialTranscript)
+                }
                 PrimaryAction("Finish question") { onAction(InterviewSessionAction.FinishListening) }
                 StopButton(onAction)
+            }
+            is InterviewSessionUiState.QuestionReady -> {
+                var editedTranscript by rememberSaveable(uiState.transcript) {
+                    mutableStateOf(uiState.transcript)
+                }
+                OutlinedTextField(
+                    value = editedTranscript,
+                    onValueChange = { editedTranscript = it },
+                    label = { Text("Interview question") },
+                    supportingText = { Text("Review or correct the transcript before generating.") },
+                    modifier = Modifier.fillMaxWidth().testTag(SessionUiTags.TRANSCRIPT_FIELD),
+                )
+                PrimaryAction("Generate answer") {
+                    onAction(InterviewSessionAction.GenerateFromTranscript(editedTranscript))
+                }
+                OutlinedButton(onClick = onStartListening) { Text("Listen again") }
             }
             is InterviewSessionUiState.Transcribing,
             is InterviewSessionUiState.GeneratingAnswer,
@@ -542,6 +563,7 @@ private fun InterviewSessionUiState.statusText(): String = when (this) {
     is InterviewSessionUiState.Ready -> "Ready to listen for an interview question."
     is InterviewSessionUiState.Listening -> "Listening. Speak the interview question now."
     is InterviewSessionUiState.Transcribing -> "Transcribing the question."
+    is InterviewSessionUiState.QuestionReady -> "Question captured. Review it before generating."
     is InterviewSessionUiState.GeneratingAnswer -> "Generating a targeted answer."
     is InterviewSessionUiState.SynthesizingSpeech -> "Preparing spoken audio."
     is InterviewSessionUiState.ReadyToPlay -> "Answer ready to play."
@@ -568,6 +590,7 @@ private fun InterviewSessionUiState.interviewContext(): InterviewContext? = when
     is InterviewSessionUiState.Ready -> context
     is InterviewSessionUiState.Listening -> context
     is InterviewSessionUiState.Transcribing -> context
+    is InterviewSessionUiState.QuestionReady -> context
     is InterviewSessionUiState.GeneratingAnswer -> context
     is InterviewSessionUiState.SynthesizingSpeech -> context
     is InterviewSessionUiState.ReadyToPlay -> content.context
@@ -582,6 +605,8 @@ private fun InterviewSessionUiState.interviewContext(): InterviewContext? = when
 }
 
 private fun InterviewSessionUiState.questionText(): String? = when (this) {
+    is InterviewSessionUiState.Listening -> partialTranscript.takeIf(String::isNotBlank)
+    is InterviewSessionUiState.QuestionReady -> transcript
     is InterviewSessionUiState.GeneratingAnswer -> question.text
     is InterviewSessionUiState.SynthesizingSpeech -> question.text
     is InterviewSessionUiState.ReadyToPlay -> content.question.text

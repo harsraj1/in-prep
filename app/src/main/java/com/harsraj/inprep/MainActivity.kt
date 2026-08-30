@@ -54,10 +54,16 @@ class MainActivity : ComponentActivity() {
 
             InPrepTheme {
                 val permissionGate = rememberMicrophonePermissionGate(
-                    onGranted = { context ->
+                    onRecordingGranted = { context ->
                         sessionViewModel.dispatch(
                             com.harsraj.inprep.feature.session.presentation.InterviewSessionAction
                                 .StartRecording(context),
+                        )
+                    },
+                    onListeningGranted = {
+                        sessionViewModel.dispatch(
+                            com.harsraj.inprep.feature.session.presentation.InterviewSessionAction
+                                .StartListening,
                         )
                     },
                 )
@@ -66,6 +72,7 @@ class MainActivity : ComponentActivity() {
                     reusablePreferences = settings.reusableSessionPreferences,
                     onAction = sessionViewModel::dispatch,
                     onStartRecording = permissionGate.requestRecording,
+                    onStartListening = permissionGate.requestListening,
                 )
             }
         }
@@ -79,13 +86,20 @@ class MainActivity : ComponentActivity() {
 
 private class MicrophonePermissionGate(
     val requestRecording: (InterviewContext) -> Unit,
+    val requestListening: () -> Unit,
 )
+
+private sealed interface PendingMicrophoneAction {
+    data class Record(val context: InterviewContext) : PendingMicrophoneAction
+    data object Listen : PendingMicrophoneAction
+}
 
 @androidx.compose.runtime.Composable
 private fun ComponentActivity.rememberMicrophonePermissionGate(
-    onGranted: (InterviewContext) -> Unit,
+    onRecordingGranted: (InterviewContext) -> Unit,
+    onListeningGranted: () -> Unit,
 ): MicrophonePermissionGate {
-    var pendingContext by remember { mutableStateOf<InterviewContext?>(null) }
+    var pendingAction by remember { mutableStateOf<PendingMicrophoneAction?>(null) }
     var showRationale by remember { mutableStateOf(false) }
     var showDenied by remember { mutableStateOf(false) }
     var permanentlyDenied by remember { mutableStateOf(false) }
@@ -93,10 +107,13 @@ private fun ComponentActivity.rememberMicrophonePermissionGate(
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         requestInFlight = false
-        val context = pendingContext
-        if (granted && context != null) {
-            pendingContext = null
-            onGranted(context)
+        val action = pendingAction
+        if (granted && action != null) {
+            pendingAction = null
+            when (action) {
+                is PendingMicrophoneAction.Record -> onRecordingGranted(action.context)
+                PendingMicrophoneAction.Listen -> onListeningGranted()
+            }
         } else {
             permanentlyDenied = MicrophonePermissionPolicy.afterDenial(
                 shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO),
@@ -112,9 +129,9 @@ private fun ComponentActivity.rememberMicrophonePermissionGate(
     }
 
     val gate = remember(launcher) {
-        MicrophonePermissionGate(requestRecording = request@{ context ->
-            if (requestInFlight || showRationale || showDenied) return@request
-            pendingContext = context
+        fun request(action: PendingMicrophoneAction) {
+            if (requestInFlight || showRationale || showDenied) return
+            pendingAction = action
             when (
                 MicrophonePermissionPolicy.beforeRequest(
                     isGranted = ContextCompat.checkSelfPermission(
@@ -127,20 +144,27 @@ private fun ComponentActivity.rememberMicrophonePermissionGate(
                 )
             ) {
                 MicrophonePermissionNextStep.START_RECORDING -> {
-                    pendingContext = null
-                    onGranted(context)
+                    pendingAction = null
+                    when (action) {
+                        is PendingMicrophoneAction.Record -> onRecordingGranted(action.context)
+                        PendingMicrophoneAction.Listen -> onListeningGranted()
+                    }
                 }
                 MicrophonePermissionNextStep.SHOW_RATIONALE -> showRationale = true
                 MicrophonePermissionNextStep.REQUEST_PERMISSION -> launchPermissionRequest()
             }
-        })
+        }
+        MicrophonePermissionGate(
+            requestRecording = { request(PendingMicrophoneAction.Record(it)) },
+            requestListening = { request(PendingMicrophoneAction.Listen) },
+        )
     }
 
     if (showRationale) {
         AlertDialog(
             onDismissRequest = { showRationale = false },
             title = { Text("Microphone permission") },
-            text = { Text("In Prep needs microphone access only while you deliberately record a voice sample.") },
+            text = { Text("In Prep needs microphone access only while you deliberately record a voice sample or listen for a question.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -150,7 +174,7 @@ private fun ComponentActivity.rememberMicrophonePermissionGate(
                 ) { Text("Continue") }
             },
             dismissButton = {
-                TextButton(onClick = { showRationale = false; pendingContext = null }) {
+                TextButton(onClick = { showRationale = false; pendingAction = null }) {
                     Text("Not now")
                 }
             },
@@ -159,14 +183,14 @@ private fun ComponentActivity.rememberMicrophonePermissionGate(
 
     if (showDenied) {
         AlertDialog(
-            onDismissRequest = { showDenied = false; pendingContext = null },
+            onDismissRequest = { showDenied = false; pendingAction = null },
             title = { Text("Microphone access denied") },
             text = {
                 Text(
                     if (permanentlyDenied) {
-                        "Enable microphone permission in system settings to record a voice sample. You can continue using the app without recording."
+                        "Enable microphone permission in system settings to record samples or listen for questions."
                     } else {
-                        "No recording was started. You can retry the permission request or continue without recording."
+                        "The microphone was not started. You can retry or continue without it."
                     },
                 )
             },
@@ -181,7 +205,7 @@ private fun ComponentActivity.rememberMicrophonePermissionGate(
                                     Uri.fromParts("package", packageName, null),
                                 ),
                             )
-                            pendingContext = null
+                            pendingAction = null
                         } else {
                             launchPermissionRequest()
                         }
@@ -189,7 +213,7 @@ private fun ComponentActivity.rememberMicrophonePermissionGate(
                 ) { Text(if (permanentlyDenied) "Open settings" else "Retry") }
             },
             dismissButton = {
-                TextButton(onClick = { showDenied = false; pendingContext = null }) {
+                TextButton(onClick = { showDenied = false; pendingAction = null }) {
                     Text("Not now")
                 }
             },
@@ -197,7 +221,7 @@ private fun ComponentActivity.rememberMicrophonePermissionGate(
     }
 
     DisposableEffect(Unit) {
-        onDispose { pendingContext = null }
+        onDispose { pendingAction = null }
     }
     return gate
 }

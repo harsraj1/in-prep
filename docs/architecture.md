@@ -101,8 +101,8 @@ Setup --StartRecording--> Recording --FinishRecording--> VoiceSampleReady
 VoiceSampleReady --CloneVoice--> Cloning --> Ready
 VoiceSampleReady --DiscardVoiceSample--> Setup
 Setup --ReuseVoiceProfile--> Ready
-Ready --StartListening--> Listening --FinishListening--> Transcribing
-Transcribing --> GeneratingAnswer --> SynthesizingSpeech --> ReadyToPlay
+Ready --StartListening--> Listening --FinishListening/final--> Transcribing/QuestionReady
+QuestionReady --GenerateFromTranscript--> GeneratingAnswer --> SynthesizingSpeech --> ReadyToPlay
 ReadyToPlay --Play--> Playing --Pause--> Paused --Resume--> Playing
 Playing --PlaybackCompleted--> Ready
 
@@ -124,6 +124,7 @@ Valid actions by state:
 | Ready | StartListening, Close, Reset |
 | Listening | FinishListening, Cancel, Stop, Close, Reset |
 | Transcribing / GeneratingAnswer / SynthesizingSpeech | Cancel, Stop, Close, Reset |
+| QuestionReady | GenerateFromTranscript, StartListening, Cancel, Stop, Close, Reset |
 | ReadyToPlay | Play, Stop, Close, Reset |
 | Playing | Pause, PlaybackCompleted, Stop, Close, Reset |
 | Paused | Resume, Stop, Close, Reset |
@@ -281,13 +282,34 @@ bodies, and media. `CompositeTemporaryFileCleaner` deletes both samples and
 generated audio on session cleanup, while cold start expires files older than
 24 hours. Exact evidence and schemas are in `docs/voicebox-api.md`.
 
+## Phase 6 speech-recognition boundary
+
+`AndroidSpeechRecognitionRepository` is the lifecycle owner of Android's
+`SpeechRecognizer`. Every public operation asserts main-thread access, recognition
+begins only after the visible Listen action passes the shared microphone permission
+gate, and `destroy()` is called from ViewModel teardown. Stop, cancellation,
+backgrounding, close, and reset release active recognition.
+
+The repository publishes `Idle`, `Listening(partialTranscript)`, `Final`, and
+`Failed` status through `StateFlow`. The session state machine mirrors partial text,
+maps device/service errors to recoverable states, and moves valid final results into
+`QuestionReady`. The editable review state is the only path to answer generation;
+empty, punctuation-only, and obviously short text is never submitted. State validity
+prevents voice-sample recording and question listening from running concurrently.
+
+Pure policy tests cover transcript selection and error categories; ViewModel tests
+cover partial/final delivery, review/edit submission, failure recovery, repeated
+actions, cancellation, and host-stop cleanup. Device recognition engines differ, so
+permission UI, service availability, network/offline behavior, and actual microphone
+release also require the README physical-device checks.
+
 ## Decisions requiring verification
 
 - The currently supported official Gemini Android/API integration, model ID,
   request schema, safety behavior, and structured-output support. These must be
   verified from official Google documentation immediately before integration.
-- Whether speech recognition is on-device on each supported device and what
-  disclosure/consent experience is required.
+- Whether speech recognition is on-device on each supported device remains a
+  runtime/device property and requires appropriate disclosure.
 - Voice profile and server-side audio retention/deletion policy.
 - Production backend authentication and abuse controls.
 - Detailed accessibility, localization, offline, and session-recovery behavior.

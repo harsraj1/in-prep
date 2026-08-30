@@ -5,6 +5,7 @@ import com.harsraj.inprep.feature.session.domain.AudioPlaybackRepository
 import com.harsraj.inprep.feature.session.domain.AudioSynthesisRepository
 import com.harsraj.inprep.feature.session.domain.SettingsRepository
 import com.harsraj.inprep.feature.session.domain.SpeechRecognitionRepository
+import com.harsraj.inprep.feature.session.domain.SpeechRecognitionStatus
 import com.harsraj.inprep.feature.session.domain.TemporaryFileCleaner
 import com.harsraj.inprep.feature.session.domain.VoiceCloningRepository
 import com.harsraj.inprep.feature.session.domain.VoiceSampleRecorder
@@ -128,6 +129,8 @@ class FakeAnswerGenerationRepository : AnswerGenerationRepository {
 class FakeSpeechRecognitionRepository(
     var question: InterviewQuestion = InterviewQuestion("Tell me about a difficult problem."),
 ) : SpeechRecognitionRepository {
+    private val mutableStatus = MutableStateFlow<SpeechRecognitionStatus>(SpeechRecognitionStatus.Idle)
+    override val status: StateFlow<SpeechRecognitionStatus> = mutableStatus
     var isListening = false
         private set
     var startCount = 0
@@ -138,10 +141,29 @@ class FakeSpeechRecognitionRepository(
         private set
     var failuresRemaining = 0
 
+    fun emitPartial(transcript: String) {
+        check(isListening)
+        mutableStatus.value = SpeechRecognitionStatus.Listening(transcript)
+    }
+
+    fun emitFinal(transcript: String = question.text) {
+        check(isListening)
+        isListening = false
+        question = InterviewQuestion(transcript)
+        mutableStatus.value = SpeechRecognitionStatus.Final(question)
+    }
+
+    fun fail(message: String) {
+        check(isListening)
+        isListening = false
+        mutableStatus.value = SpeechRecognitionStatus.Failed(message)
+    }
+
     override fun startListening() {
         check(!isListening) { "Fake recognizer is already listening" }
         startCount += 1
         isListening = true
+        mutableStatus.value = SpeechRecognitionStatus.Listening()
     }
 
     override suspend fun stopAndTranscribe(): InterviewQuestion {
@@ -151,15 +173,20 @@ class FakeSpeechRecognitionRepository(
         yield()
         if (failuresRemaining > 0) {
             failuresRemaining -= 1
+            mutableStatus.value = SpeechRecognitionStatus.Failed("Fake transcription failed")
             error("Fake transcription failed")
         }
+        mutableStatus.value = SpeechRecognitionStatus.Final(question)
         return question
     }
 
     override fun cancel() {
         cancelCount += 1
         isListening = false
+        mutableStatus.value = SpeechRecognitionStatus.Idle
     }
+
+    override fun destroy() = cancel()
 }
 
 class FakeAudioSynthesisRepository(

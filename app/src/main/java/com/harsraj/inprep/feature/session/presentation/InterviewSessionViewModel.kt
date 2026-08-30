@@ -7,6 +7,7 @@ import com.harsraj.inprep.feature.session.domain.AudioPlaybackRepository
 import com.harsraj.inprep.feature.session.domain.AudioSynthesisRepository
 import com.harsraj.inprep.feature.session.domain.SettingsRepository
 import com.harsraj.inprep.feature.session.domain.SpeechRecognitionRepository
+import com.harsraj.inprep.feature.session.domain.SpeechRecognitionStatus
 import com.harsraj.inprep.feature.session.domain.TemporaryFileCleaner
 import com.harsraj.inprep.feature.session.domain.VoiceCloningRepository
 import com.harsraj.inprep.feature.session.domain.VoiceSampleRecorder
@@ -77,6 +78,34 @@ class InterviewSessionViewModel(
                 }
             }
         }
+        viewModelScope.launch(dispatcher) {
+            speechRecognitionRepository.status.collect { recognitionStatus ->
+                val current = mutableState.value
+                if (current is InterviewSessionUiState.Listening) {
+                    when (recognitionStatus) {
+                        is SpeechRecognitionStatus.Listening -> {
+                            mutableState.value = current.copy(
+                                partialTranscript = recognitionStatus.partialTranscript,
+                            )
+                        }
+                        is SpeechRecognitionStatus.Final -> acceptTranscript(
+                            current.context,
+                            current.voiceProfile,
+                            recognitionStatus.question.text,
+                        )
+                        is SpeechRecognitionStatus.Failed -> {
+                            retryOperation = RetryOperation.StartListening(current.context, current.voiceProfile)
+                            showError(
+                                RecoveryPoint.Ready(current.context, current.voiceProfile),
+                                FailedStage.TRANSCRIBE,
+                                IllegalStateException(recognitionStatus.message),
+                            )
+                        }
+                        SpeechRecognitionStatus.Idle -> Unit
+                    }
+                }
+            }
+        }
         if (initialPreferences == null) {
             viewModelScope.launch(dispatcher) {
                 val saved = settingsRepository.loadSettings()
@@ -95,13 +124,16 @@ class InterviewSessionViewModel(
     }
 
     fun onHostStopped() {
-        if (mutableState.value is InterviewSessionUiState.Recording) {
+        if (mutableState.value is InterviewSessionUiState.Recording ||
+            mutableState.value is InterviewSessionUiState.Listening
+        ) {
             dispatch(InterviewSessionAction.Cancel)
         }
     }
 
     override fun onCleared() {
         voiceSampleRecorder.cancel()
+        speechRecognitionRepository.destroy()
         super.onCleared()
     }
 
@@ -126,8 +158,16 @@ class InterviewSessionViewModel(
                 current as InterviewSessionUiState.VoiceSampleReady,
             )
             is InterviewSessionAction.ReuseVoiceProfile -> reuseVoiceProfile(action.preferences)
-            InterviewSessionAction.StartListening -> startListening(current as InterviewSessionUiState.Ready)
+            InterviewSessionAction.StartListening -> when (current) {
+                is InterviewSessionUiState.Ready -> startListening(current.context, current.voiceProfile)
+                is InterviewSessionUiState.QuestionReady -> startListening(current.context, current.voiceProfile)
+                else -> error("Validated listening state changed unexpectedly")
+            }
             InterviewSessionAction.FinishListening -> finishListening(current as InterviewSessionUiState.Listening)
+            is InterviewSessionAction.GenerateFromTranscript -> generateFromTranscript(
+                current as InterviewSessionUiState.QuestionReady,
+                action.transcript,
+            )
             InterviewSessionAction.Play -> play((current as InterviewSessionUiState.ReadyToPlay).content)
             InterviewSessionAction.Pause -> pause((current as InterviewSessionUiState.Playing).content)
             InterviewSessionAction.Resume -> resume((current as InterviewSessionUiState.Paused).content)
@@ -208,14 +248,14 @@ class InterviewSessionViewModel(
         }
     }
 
-    private fun startListening(ready: InterviewSessionUiState.Ready) {
+    private fun startListening(context: InterviewContext, profile: VoiceProfileReference) {
+        mutableState.value = InterviewSessionUiState.Listening(context, profile)
         try {
             speechRecognitionRepository.startListening()
-            retryOperation = RetryOperation.StartListening(ready.context, ready.voiceProfile)
-            mutableState.value = InterviewSessionUiState.Listening(ready.context, ready.voiceProfile)
+            retryOperation = RetryOperation.StartListening(context, profile)
         } catch (error: Exception) {
             showError(
-                recoveryPoint = RecoveryPoint.Ready(ready.context, ready.voiceProfile),
+                recoveryPoint = RecoveryPoint.Ready(context, profile),
                 failedStage = FailedStage.START_LISTENING,
                 error = error,
             )
@@ -233,7 +273,7 @@ class InterviewSessionViewModel(
             try {
                 val question = speechRecognitionRepository.stopAndTranscribe()
                 yield()
-                generateAnswer(context, profile, question)
+                acceptTranscript(context, profile, question.text)
             } catch (error: Exception) {
                 showError(
                     recoveryPoint = RecoveryPoint.Ready(context, profile),
@@ -241,6 +281,41 @@ class InterviewSessionViewModel(
                     error = error,
                 )
             }
+        }
+    }
+
+    private fun acceptTranscript(
+        context: InterviewContext,
+        profile: VoiceProfileReference,
+        transcript: String,
+    ) {
+        if (mutableState.value !is InterviewSessionUiState.Listening &&
+            mutableState.value !is InterviewSessionUiState.Transcribing
+        ) return
+        retryOperation = null
+        mutableState.value = InterviewSessionUiState.QuestionReady(context, profile, transcript)
+    }
+
+    private fun generateFromTranscript(
+        questionReady: InterviewSessionUiState.QuestionReady,
+        transcript: String,
+    ) {
+        val normalized = transcript.trim()
+        if (normalized.length < 3 || normalized.none(Char::isLetterOrDigit)) {
+            retryOperation = null
+            showError(
+                RecoveryPoint.Ready(questionReady.context, questionReady.voiceProfile),
+                FailedStage.TRANSCRIBE,
+                IllegalArgumentException("Enter a clear interview question before generating an answer"),
+            )
+            return
+        }
+        launchOperation {
+            generateAnswer(
+                questionReady.context,
+                questionReady.voiceProfile,
+                InterviewQuestion(normalized),
+            )
         }
     }
 
@@ -370,6 +445,9 @@ class InterviewSessionViewModel(
                 speechRecognitionRepository.cancel()
                 mutableState.value = InterviewSessionUiState.Ready(current.context, current.voiceProfile)
             }
+            is InterviewSessionUiState.QuestionReady -> {
+                mutableState.value = InterviewSessionUiState.Ready(current.context, current.voiceProfile)
+            }
             is InterviewSessionUiState.GeneratingAnswer -> {
                 mutableState.value = InterviewSessionUiState.Ready(current.context, current.voiceProfile)
             }
@@ -386,7 +464,8 @@ class InterviewSessionViewModel(
             is RetryOperation.StartRecording -> startRecording(pending.context)
             is RetryOperation.CloneVoice -> cloneVoice(pending.context, pending.sample)
             is RetryOperation.StartListening -> startListening(
-                InterviewSessionUiState.Ready(pending.context, pending.profile),
+                pending.context,
+                pending.profile,
             )
             is RetryOperation.Transcribe -> transcribe(pending.context, pending.profile)
             is RetryOperation.GenerateAnswer -> launchOperation {
@@ -509,6 +588,8 @@ class InterviewSessionViewModel(
         is InterviewSessionUiState.GeneratingAnswer,
         is InterviewSessionUiState.SynthesizingSpeech,
         -> action.isTerminationAction()
+        is InterviewSessionUiState.QuestionReady -> action is InterviewSessionAction.GenerateFromTranscript ||
+            action == InterviewSessionAction.StartListening || action.isTerminationAction()
         is InterviewSessionUiState.ReadyToPlay -> action == InterviewSessionAction.Play ||
             action == InterviewSessionAction.Stop || action == InterviewSessionAction.Close ||
             action == InterviewSessionAction.Reset
@@ -533,6 +614,7 @@ class InterviewSessionViewModel(
         is InterviewSessionUiState.Ready -> this
         is InterviewSessionUiState.Listening -> InterviewSessionUiState.Ready(context, voiceProfile)
         is InterviewSessionUiState.Transcribing -> InterviewSessionUiState.Ready(context, voiceProfile)
+        is InterviewSessionUiState.QuestionReady -> InterviewSessionUiState.Ready(context, voiceProfile)
         is InterviewSessionUiState.GeneratingAnswer -> InterviewSessionUiState.Ready(context, voiceProfile)
         is InterviewSessionUiState.SynthesizingSpeech -> InterviewSessionUiState.Ready(context, voiceProfile)
         is InterviewSessionUiState.ReadyToPlay -> InterviewSessionUiState.Ready(

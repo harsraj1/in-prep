@@ -2,8 +2,8 @@
 
 In Prep is an Android interview-preparation app. The current build provides the
 accessible Jetpack Compose experience, persistent non-secret preferences,
-lifecycle-safe local voice-sample capture, and a verified Voicebox v0.5.0 LAN
-adapter. Speech recognition and Gemini requests still use in-memory fakes.
+lifecycle-safe local voice-sample capture, Android speech recognition, and a
+verified Voicebox v0.5.0 LAN adapter. Gemini requests still use an in-memory fake.
 
 ## Prerequisites
 
@@ -88,6 +88,29 @@ Physical-device manual checks:
 4. Start recording and background, rotate, or interrupt the app; verify capture
    stops and setup is restored.
 5. Rapidly tap controls and verify only one recorder starts.
+
+## Spoken question capture
+
+Press **Listen** to start Android's installed `SpeechRecognizer`; it never starts
+in the background. Partial text is shown while listening. A final result opens a
+review field where the transcript can be corrected before **Generate answer** is
+enabled. Empty, punctuation-only, and obviously short transcripts are rejected.
+
+The recognizer shares the `RECORD_AUDIO` permission flow with voice sampling.
+Only session states that cannot be recording permit Listen, so the sample recorder
+and recognizer cannot own the microphone simultaneously. Backgrounding, Stop,
+Cancel, Close, reset, and ViewModel teardown stop or destroy recognizer resources.
+
+Speech recognition availability, language support, offline behavior, accuracy,
+and network use vary by device and installed recognition service. On a physical
+device, manually verify:
+
+1. Denied and permanently denied microphone permission leave the session usable.
+2. Partial text updates and the best final transcript reaches the review field.
+3. Silence/no-match, airplane mode, and service/network failure show Retry/Cancel.
+4. Rapid Listen taps do not create multiple recognizers; Stop and app backgrounding
+   release the microphone so voice-sample recording can subsequently start.
+5. Editing the transcript changes the question passed to answer generation.
 
 ## Build and verify
 
